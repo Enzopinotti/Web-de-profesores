@@ -1,0 +1,101 @@
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="../estilos/style.css">
+
+    <title>Modderhouse</title>
+</head>
+<body class="contenedor-principal">
+    
+    <header class="header">
+
+        <a href="../index.html" ><h1
+        class="tituloPrincipal">Modderhouse</h1></a>
+
+
+        <img src="../assets/linea-divisoria.png"            
+        
+        alt="linea-divisoria" width="100%" height="2px">
+
+    </header>
+    
+    <main class="mainPrincipal">
+        <br>
+
+        <h2>Bienvenido profesor... Agregue los alumnos de su    
+            curso
+        </h2>
+
+        <form action="" method="get" enctype="text/plain" 
+        id="formularioAlumnos">
+            
+            <label for="Nombre">Nombre:</label>
+
+            <input type="text" name="Nombre" 
+            id="nombreAlumno" 
+            class="inputsAlu">
+
+            <label for="Apellido">Apellido:</label >
+
+            <input type="text" name="Apellido" 
+            id="apellidoAlumno"  
+            class="inputsAlu">
+
+            <label for="Nota">Nota:</label >
+
+            <input type="number" name="Nota" id="notaAlumno" 
+            class="inputsAlu" max="10" min="0" >
+            <br>
+
+            <input type="submit" value="Agregar Alumno"   
+            class="form_boton" id="submitAlu" 
+            class="inputsAlu" style="padding: 1px;">
+
+            <br>
+            
+            <input type="button" value="Quitar Alumno"   
+            class="form_boton" id="QuitarAlu" 
+            class="inputsAlu" style="padding: 1px;">
+            
+
+            <input type="text" id="buscarAlumno" 
+            placeholder="Buscar Alumno por nombre..." class="inputsAlu">
+
+        </form>
+        <br>
+        <h2>Lista de tutores</h2>
+        <br>
+        <div id="listaTutores" class="listaTutores">
+
+        </div>
+    </main>
+    <aside class="aside">
+        <div id="contenedorAlumnos">
+            
+        </div>
+        
+    </aside>
+    
+    <footer class="footer">
+
+        
+        <div class="contenidoFooter">
+            <div class="redSocial">
+                <a href="https://web.whatsapp.com/" target="_blank">
+                
+                <img src="../assets/icons8-whatsapp-100.png" 
+                width="49px"  alt="">
+                
+                </a>
+            </div>
+            
+        </div>
+
+        <h4 class="derechos">Todos los derechos reservados © Enzo Pinotti </h4>
+
+    </footer>
+
+    <script src="../js/principal.js"></script>
+</body>
