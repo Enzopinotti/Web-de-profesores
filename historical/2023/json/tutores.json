@@ -1,0 +1,25 @@
+[
+    {
+        "nombre": "María Elena",
+        "apellido": "Martinez",
+        "img": "/assets/imagenesTutores/tutorMaria.jpeg"
+        
+    },
+    {
+        "nombre": "Enzo Daniel",
+        "apellido": "Pinotti",
+        "img": "/assets/imagenesTutores/tutorEnzo.jpg"
+        
+    },
+    {
+        "nombre": "Martin",
+        "apellido": "Moreno",
+        "img": "/assets/imagenesTutores/tutorMartin.jpeg"
+    },
+    {
+        "nombre": "Fernanda Lorena",
+        "apellido": "Ortiz",
+        "img": "/assets/imagenesTutores/tutorFernanda.jpeg"
+    }
+
+]

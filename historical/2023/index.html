@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="./estilos/style.css">
+
+    <title>Modderhouse</title>
+</head>
+
+<body class="contenedor-logeo">
+
+
+    <header class="header">
+  
+        <h1 class="tituloPrincipal">Modderhouse</h1>
+
+
+        <img src="./assets/linea-divisoria.png" alt="linea-divisoria" width="100%" height="2px">
+
+    </header>
+
+    <main class="main">
+
+        <cajaInicioSesion class="inicioSesion">
+
+            <img src="./assets/usuariopng.jfif" alt="png de usuario" width="90px" class="pngUsuario">
+
+            <h2>Bienvenido profesor, ingrese sus datos</h2>
+            <br>
+            <hr>
+            <br>
+
+            
+            <form action="./views/principal.html" method="get" enctype="text/plain" id="formularioLogin">
+                <label for="usuario">DNI:</label >
+                <input type="text" name="usuario" id="dniLogin">
+                <br>
+                <label for="contraseña">Contraseña:</label >
+                <input type="password" name="contraseña" id="contraseñaLogin">
+                <br>
+                <input type="submit" value="INGRESAR" class="form_boton">
+                <br>
+                <p><a href="#" class="ContraOlvidada">¿Olvidaste tu contraseña?</a></p>
+            </form> 
+            
+            
+
+        </cajaInicioSesion>
+
+        <cajaRegistro class="registro">
+
+            <img src="./assets/usuariopng.jfif" alt="png de usuario" width="90px" class="pngUsuario">
+
+            <h2>¿Aún no tienes una cuenta? Registrate para acceder</h2>
+            <br>
+            <hr>
+            <br>
+
+        
+            <form action="" method="get" enctype="text/plain" class="formularioRegistro"
+            id="formularioRegistro">
+
+                
+                <label for="usuario">DNI:</label >
+
+                <input type="text" name="usuario"   
+                    id="dniRegistro">
+
+                    
+                <br>
+                
+                
+                <label for="correo">Email:</label >
+
+                <input type="email" name="correo" 
+                    id="emailRegistro">
+
+                
+                <br>
+            
+                <label for="contraseña">Contraseña:</label >
+
+                <input type="password" name="contraseña" 
+                    id="contraseñaRegistro">
+            
+                <br>
+
+                <input type="submit" value="REGISTRARSE" class="form_boton" id="submitRegistro"> 
+                
+            </form> 
+            
+            
+
+        </cajaRegistro>
+
+    </main>
+  
+
+   <script src="./js/main.js"></script>
+</body>
+
+
+
+
