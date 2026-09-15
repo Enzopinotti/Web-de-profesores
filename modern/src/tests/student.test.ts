@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   createStudent,
   isDuplicateStudent,
+  isDuplicateStudentExcluding,
   matchesStudent,
   normalizeForComparison,
   sortStudents,
+  sortStudentsBy,
+  summarizeStudents,
+  updateStudent,
   validateStudentDraft,
 } from "../domain/student";
 
@@ -47,6 +51,43 @@ describe("student domain", () => {
     ).toBe(true);
   });
 
+  it("allows editing the same identity while still blocking another student", () => {
+    const ada = createStudent(
+      { name: "Ada", surname: "Lovelace", grade: 9 },
+      () => "ada",
+    );
+    const grace = createStudent(
+      { name: "Grace", surname: "Hopper", grade: 8 },
+      () => "grace",
+    );
+
+    expect(
+      isDuplicateStudentExcluding([ada, grace], ada, ada.id),
+    ).toBe(false);
+    expect(
+      isDuplicateStudentExcluding(
+        [ada, grace],
+        { name: "Grace", surname: "Hopper" },
+        ada.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("updates a student without changing the stable id", () => {
+    const original = createStudent(
+      { name: "Ada", surname: "Lovelace", grade: 9 },
+      () => "stable-id",
+    );
+    expect(
+      updateStudent(original, { name: "Ada", surname: "Byron", grade: 10 }),
+    ).toEqual({
+      id: "stable-id",
+      name: "Ada",
+      surname: "Byron",
+      grade: 10,
+    });
+  });
+
   it("searches by name or surname without accent sensitivity", () => {
     const student = createStudent(
       { name: "José", surname: "Álvarez", grade: 9 },
@@ -56,14 +97,50 @@ describe("student domain", () => {
     expect(matchesStudent(student, "pepe")).toBe(false);
   });
 
-  it("sorts by surname and then name", () => {
+  it("sorts by surname and then name by default", () => {
     const students = [
-      createStudent({ name: "Grace", surname: "Hopper", grade: 10 }, () => "2"),
+      createStudent({ name: "Grace", surname: "Hopper", grade: 8 }, () => "2"),
       createStudent({ name: "Ada", surname: "Byron", grade: 10 }, () => "1"),
     ];
     expect(sortStudents(students).map((student) => student.id)).toEqual([
       "1",
       "2",
     ]);
+  });
+
+  it("sorts by grade in either direction with stable name fallback", () => {
+    const students = [
+      createStudent({ name: "Grace", surname: "Hopper", grade: 8 }, () => "2"),
+      createStudent({ name: "Ada", surname: "Byron", grade: 10 }, () => "1"),
+      createStudent({ name: "Alan", surname: "Turing", grade: 8 }, () => "3"),
+    ];
+
+    expect(
+      sortStudentsBy(students, "grade-desc").map((student) => student.id),
+    ).toEqual(["1", "2", "3"]);
+    expect(
+      sortStudentsBy(students, "grade-asc").map((student) => student.id),
+    ).toEqual(["2", "3", "1"]);
+  });
+
+  it("summarizes count average minimum and maximum without inventing pass rules", () => {
+    const students = [
+      createStudent({ name: "Ada", surname: "Byron", grade: 10 }, () => "1"),
+      createStudent({ name: "Grace", surname: "Hopper", grade: 8 }, () => "2"),
+      createStudent({ name: "Alan", surname: "Turing", grade: 6 }, () => "3"),
+    ];
+
+    expect(summarizeStudents(students)).toEqual({
+      count: 3,
+      average: 8,
+      minimum: 6,
+      maximum: 10,
+    });
+    expect(summarizeStudents([])).toEqual({
+      count: 0,
+      average: null,
+      minimum: null,
+      maximum: null,
+    });
   });
 });
