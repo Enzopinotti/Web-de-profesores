@@ -7,9 +7,26 @@
 }
 
 button:disabled,
-input:disabled {
+input:disabled,
+select:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #aaaead;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  padding: 9px 34px 9px 12px;
+  font: inherit;
+}
+
+select:focus-visible {
+  outline: 3px solid rgba(90, 112, 0, 0.38);
+  outline-offset: 3px;
 }
 
 .recovery-panel {
@@ -35,6 +52,87 @@ input:disabled {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
+}
+
+.form-actions {
+  display: grid;
+  align-self: end;
+  gap: 8px;
+  margin-top: 25px;
+}
+
+.form-actions .button--primary {
+  margin-top: 0;
+}
+
+.form-mode {
+  min-height: 1.4em;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sort-field {
+  display: grid;
+  width: min(210px, 100%);
+  gap: 7px;
+}
+
+.sort-field label {
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.student-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.student-summary div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.student-summary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.student-summary strong {
+  font-size: 1.15rem;
+}
+
+.student-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.undo-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(90, 112, 0, 0.25);
+  border-radius: 13px;
+  background: #f5f8e8;
+  font-size: 0.84rem;
+}
+
+.undo-panel[hidden] {
+  display: none;
 }
 
 .data-tools {
@@ -124,6 +222,12 @@ input:disabled {
   margin-top: 0;
 }
 
+@media (max-width: 900px) {
+  .form-actions {
+    margin-top: 0;
+  }
+}
+
 @media (max-width: 760px) {
   .data-tools {
     grid-template-columns: minmax(0, 1fr);
@@ -132,12 +236,35 @@ input:disabled {
 
 @media (max-width: 620px) {
   .recovery-actions,
-  .recovery-panel .reset-confirmation div {
+  .recovery-panel .reset-confirmation div,
+  .undo-panel {
+    align-items: stretch;
     flex-direction: column;
   }
 
   .recovery-actions .button,
-  .recovery-panel .reset-confirmation .button {
+  .recovery-panel .reset-confirmation .button,
+  .undo-panel .button {
     width: 100%;
+  }
+
+  .student-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sort-field {
+    width: 100%;
+  }
+
+  .student-card {
+    flex-direction: column;
+  }
+
+  .student-card-actions {
+    width: 100%;
+  }
+
+  .student-card-actions .button {
+    flex: 1 1 0;
   }
 }
