@@ -19,6 +19,14 @@ export type ValidStudentInput = Readonly<{
 
 export type StudentField = "name" | "surname" | "grade";
 export type StudentErrors = Partial<Record<StudentField, string>>;
+export type StudentSortMode = "surname-asc" | "grade-desc" | "grade-asc";
+
+export type StudentSummary = Readonly<{
+  count: number;
+  average: number | null;
+  minimum: number | null;
+  maximum: number | null;
+}>;
 
 export type StudentValidation =
   | { valid: true; value: ValidStudentInput; errors: Record<string, never> }
@@ -89,6 +97,16 @@ export function createStudent(
   };
 }
 
+export function updateStudent(
+  student: Student,
+  input: ValidStudentInput,
+): Student {
+  return {
+    id: student.id,
+    ...input,
+  };
+}
+
 export function studentIdentityKey(
   student: Pick<Student, "name" | "surname">,
 ): string {
@@ -102,6 +120,18 @@ export function isDuplicateStudent(
   const candidateKey = studentIdentityKey(candidate);
   return students.some(
     (student) => studentIdentityKey(student) === candidateKey,
+  );
+}
+
+export function isDuplicateStudentExcluding(
+  students: readonly Student[],
+  candidate: Pick<Student, "name" | "surname">,
+  excludedId: string,
+): boolean {
+  const candidateKey = studentIdentityKey(candidate);
+  return students.some(
+    (student) =>
+      student.id !== excludedId && studentIdentityKey(student) === candidateKey,
   );
 }
 
@@ -121,7 +151,22 @@ export function matchesStudent(student: Student, query: string): boolean {
 }
 
 export function sortStudents(students: readonly Student[]): Student[] {
+  return sortStudentsBy(students, "surname-asc");
+}
+
+export function sortStudentsBy(
+  students: readonly Student[],
+  mode: StudentSortMode,
+): Student[] {
   return [...students].sort((left, right) => {
+    if (mode === "grade-desc" && left.grade !== right.grade) {
+      return right.grade - left.grade;
+    }
+
+    if (mode === "grade-asc" && left.grade !== right.grade) {
+      return left.grade - right.grade;
+    }
+
     const surnameComparison = left.surname.localeCompare(right.surname, "es", {
       sensitivity: "base",
     });
@@ -132,4 +177,25 @@ export function sortStudents(students: readonly Student[]): Student[] {
 
     return left.name.localeCompare(right.name, "es", { sensitivity: "base" });
   });
+}
+
+export function summarizeStudents(students: readonly Student[]): StudentSummary {
+  if (students.length === 0) {
+    return {
+      count: 0,
+      average: null,
+      minimum: null,
+      maximum: null,
+    };
+  }
+
+  const grades = students.map((student) => student.grade);
+  const total = grades.reduce((sum, grade) => sum + grade, 0);
+
+  return {
+    count: students.length,
+    average: total / students.length,
+    minimum: Math.min(...grades),
+    maximum: Math.max(...grades),
+  };
 }
