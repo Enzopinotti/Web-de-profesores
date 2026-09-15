@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -85,7 +86,3 @@ for (const [relativePath, expectedSha] of Object.entries(historicalBaseline)) {
     `historical/2023/${relativePath} no longer matches baseline d6a38f57`,
   );
 }
-
-console.log(
-  `Pages mirror valid: ${distAssets.length} generated assets match dist and ${Object.keys(historicalBaseline).length} historical files match the 2023 baseline byte-for-byte.`,
-);
