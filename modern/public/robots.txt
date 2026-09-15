@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://enzopinotti.github.io/Web-de-profesores/sitemap.xml
