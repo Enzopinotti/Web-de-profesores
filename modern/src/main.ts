@@ -1,5 +1,6 @@
 import "./styles.css";
 import "./responsive-hardening.css";
+import "./maturity.css";
 import { mountApp } from "./app";
 
 const root = document.querySelector<HTMLElement>("#app");
