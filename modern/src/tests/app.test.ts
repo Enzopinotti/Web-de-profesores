@@ -334,8 +334,11 @@ describe("Modderhouse app", () => {
     expect((screen.getByLabelText("Nombre") as HTMLInputElement).disabled).toBe(
       false,
     );
-    expect(
-      screen.queryByText("Hay datos locales que necesitan recuperación."),
-    ).toBeNull();
+    const recoveryText = screen.getByText(
+      "Hay datos locales que necesitan recuperación.",
+    );
+    const recoveryPanel = recoveryText.closest(".recovery-panel");
+    expect(recoveryPanel).not.toBeNull();
+    expect((recoveryPanel as HTMLElement).hidden).toBe(true);
   });
 });
