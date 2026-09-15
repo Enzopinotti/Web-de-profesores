@@ -1,0 +1,93 @@
+name: Overflow diagnostic once
+
+on:
+  push:
+    branches:
+      - ops/production-smoke-once
+    paths:
+      - ".github/workflows/overflow-diagnostic-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect live production at 360px
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          "$chrome" --headless=new --no-sandbox --disable-gpu \
+            --remote-debugging-port=9222 --remote-allow-origins='*' \
+            --user-data-dir=/tmp/modderhouse-diag \
+            https://enzopinotti.github.io/Web-de-profesores/ >/tmp/chrome.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then break; fi
+            sleep 1
+          done
+
+          cat > /tmp/diag.mjs <<'NODE'
+          import assert from "node:assert/strict";
+          const targets = await (await fetch("http://127.0.0.1:9222/json/list")).json();
+          const target = targets.find((item) => item.type === "page" && item.url.includes("Web-de-profesores"));
+          assert.ok(target);
+          const ws = new WebSocket(target.webSocketDebuggerUrl);
+          await new Promise((resolve, reject) => {
+            ws.addEventListener("open", resolve, { once: true });
+            ws.addEventListener("error", reject, { once: true });
+          });
+          let id = 0;
+          const pending = new Map();
+          ws.addEventListener("message", (event) => {
+            const message = JSON.parse(event.data);
+            const waiter = pending.get(message.id);
+            if (!waiter) return;
+            pending.delete(message.id);
+            waiter.resolve(message.result);
+          });
+          const cdp = (method, params = {}) => new Promise((resolve) => {
+            const current = ++id;
+            pending.set(current, { resolve });
+            ws.send(JSON.stringify({ id: current, method, params }));
+          });
+          const evaluate = async (expression) => {
+            const result = await cdp("Runtime.evaluate", { expression, returnByValue: true });
+            return result.result.value;
+          };
+          await cdp("Runtime.enable");
+          await cdp("Emulation.setDeviceMetricsOverride", {
+            width: 360,
+            height: 900,
+            deviceScaleFactor: 1,
+            mobile: false,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const result = await evaluate(`(() => {
+            const viewport = window.innerWidth;
+            const offenders = Array.from(document.querySelectorAll('*')).map((node) => {
+              const rect = node.getBoundingClientRect();
+              return {
+                tag: node.tagName,
+                id: node.id,
+                className: typeof node.className === 'string' ? node.className : '',
+                text: (node.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 100),
+                left: Math.round(rect.left * 10) / 10,
+                right: Math.round(rect.right * 10) / 10,
+                width: Math.round(rect.width * 10) / 10,
+                scrollWidth: node.scrollWidth,
+                clientWidth: node.clientWidth,
+              };
+            }).filter((item) => item.right > viewport + 0.5 || item.left < -0.5);
+            return {
+              viewport,
+              documentScrollWidth: document.documentElement.scrollWidth,
+              bodyScrollWidth: document.body.scrollWidth,
+              offenders,
+            };
+          })()`);
+          console.log(JSON.stringify(result, null, 2));
+          ws.close();
+          NODE
+          node /tmp/diag.mjs
