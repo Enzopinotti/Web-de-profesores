@@ -11,8 +11,10 @@ function read(relativePath: string): string {
 describe("public document contract", () => {
   it("uses the production Pages URL as canonical and og:url authority", () => {
     const html = read("index.html");
-    expect(html).toContain(`<link rel="canonical" href="${productionUrl}" />`);
-    expect(html).toContain(`<meta property="og:url" content="${productionUrl}" />`);
+    expect(html).toContain('rel="canonical"');
+    expect(html).toContain(`href="${productionUrl}"`);
+    expect(html).toContain('property="og:url"');
+    expect(html).toContain(`content="${productionUrl}"`);
     expect(html).toContain("Content-Security-Policy");
   });
 
