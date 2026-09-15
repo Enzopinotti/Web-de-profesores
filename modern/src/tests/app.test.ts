@@ -264,11 +264,17 @@ describe("Modderhouse app", () => {
     expect(
       screen.getByText("Hay datos locales que necesitan recuperación."),
     ).not.toBeNull();
-    expect(screen.getByLabelText("Nombre")).toBeDisabled();
-    expect(screen.getByLabelText("Ordenar")).toBeDisabled();
+    expect((screen.getByLabelText("Nombre") as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByLabelText("Ordenar") as HTMLSelectElement).disabled).toBe(
+      true,
+    );
     expect(
-      screen.getByRole("button", { name: "Exportar backup" }),
-    ).toBeDisabled();
+      (screen.getByRole("button", {
+        name: "Exportar backup",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe(
       "broken-json",
     );
@@ -295,7 +301,9 @@ describe("Modderhouse app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sí, descartar" }));
 
     expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBeNull();
-    expect(screen.getByLabelText("Nombre")).not.toBeDisabled();
+    expect((screen.getByLabelText("Nombre") as HTMLInputElement).disabled).toBe(
+      false,
+    );
   });
 
   it("restores a valid backup and exits recovery mode atomically", async () => {
@@ -321,7 +329,9 @@ describe("Modderhouse app", () => {
         screen.getByRole("heading", { name: "Grace Hopper" }),
       ).not.toBeNull();
     });
-    expect(screen.getByLabelText("Nombre")).not.toBeDisabled();
+    expect((screen.getByLabelText("Nombre") as HTMLInputElement).disabled).toBe(
+      false,
+    );
     expect(
       screen.queryByText("Hay datos locales que necesitan recuperación."),
     ).toBeNull();
