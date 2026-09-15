@@ -7,6 +7,7 @@ on:
     paths:
       - modern/package.json
       - modern/pnpm-workspace.yaml
+      - modern/vite.config.ts
       - .github/workflows/bootstrap-modern-once.yml
 
 permissions:
