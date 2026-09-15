@@ -1,9 +1,10 @@
 /*
  * Browser-qualified responsive hardening.
  *
- * Production Chrome smoke at 360px exposed an intrinsic-size expansion where
- * grid/flex children kept their automatic minimum width and forced the page to
- * 450px. Keep this contract explicit instead of hiding it with overflow-x.
+ * Production Chrome smoke at 360px exposed intrinsic-size expansion twice:
+ * first from grid/flex automatic minimum widths and later from the large hero
+ * heading keeping a word wider than its narrow text measure. Keep both
+ * contracts explicit instead of hiding horizontal overflow.
  */
 .main-layout > *,
 .student-form > *,
@@ -25,6 +26,10 @@
 }
 
 @media (max-width: 620px) {
+  h1 {
+    overflow-wrap: anywhere;
+  }
+
   .student-form,
   .tutor-list {
     grid-template-columns: minmax(0, 1fr);
