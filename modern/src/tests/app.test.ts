@@ -267,13 +267,15 @@ describe("Modderhouse app", () => {
     expect((screen.getByLabelText("Nombre") as HTMLInputElement).disabled).toBe(
       true,
     );
-    expect((screen.getByLabelText("Ordenar") as HTMLSelectElement).disabled).toBe(
-      true,
-    );
     expect(
-      (screen.getByRole("button", {
-        name: "Exportar backup",
-      }) as HTMLButtonElement).disabled,
+      (screen.getByLabelText("Ordenar") as HTMLSelectElement).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Exportar backup",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
     expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe(
       "broken-json",
