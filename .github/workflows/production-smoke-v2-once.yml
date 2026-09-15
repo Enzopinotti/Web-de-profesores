@@ -1,0 +1,223 @@
+name: Production smoke v2 once
+
+on:
+  push:
+    branches:
+      - ops/production-smoke-once
+    paths:
+      - ".github/workflows/production-smoke-v2-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      URL: https://enzopinotti.github.io/Web-de-profesores/
+
+    steps:
+      - name: Verify live HTTP surface
+        run: |
+          set -euo pipefail
+          curl -fLsS "$URL" -o /tmp/page.html
+          grep -Fq '<title>Modderhouse — Workspace docente local</title>' /tmp/page.html
+          grep -Fq 'rel="canonical"' /tmp/page.html
+          grep -Fq 'property="og:url"' /tmp/page.html
+          grep -Fq 'https://enzopinotti.github.io/Web-de-profesores/' /tmp/page.html
+          if grep -Fqi 'type="password"' /tmp/page.html; then exit 1; fi
+
+          curl -fLsS "${URL}robots.txt" -o /tmp/robots.txt
+          curl -fLsS "${URL}sitemap.xml" -o /tmp/sitemap.xml
+          grep -Fq 'Sitemap: https://enzopinotti.github.io/Web-de-profesores/sitemap.xml' /tmp/robots.txt
+          test "$(grep -o '<loc>' /tmp/sitemap.xml | wc -l | tr -d ' ')" = "1"
+          grep -Fq '<loc>https://enzopinotti.github.io/Web-de-profesores/</loc>' /tmp/sitemap.xml
+
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urljoin
+          from urllib.request import urlopen
+
+          base = "https://enzopinotti.github.io/Web-de-profesores/"
+          html = Path("/tmp/page.html").read_text()
+
+          class Assets(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.urls = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == "script" and attrs.get("src"):
+                      self.urls.append(attrs["src"])
+                  if tag == "link" and attrs.get("rel") == "stylesheet" and attrs.get("href"):
+                      self.urls.append(attrs["href"])
+
+          parser = Assets()
+          parser.feed(html)
+          assert len(parser.urls) >= 2, parser.urls
+          for asset in parser.urls:
+              with urlopen(urljoin(base, asset)) as response:
+                  assert response.status == 200, (asset, response.status)
+          print("HTTP assets resolved:", parser.urls)
+          PY
+
+      - name: Launch Chrome with DevTools
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome"
+          "$chrome" --version
+          "$chrome" --headless=new --no-sandbox --disable-gpu \
+            --remote-debugging-port=9222 --remote-allow-origins='*' \
+            --user-data-dir=/tmp/modderhouse-chrome "$URL" >/tmp/chrome.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/chrome.log
+          exit 1
+
+      - name: Verify production behavior in real Chrome
+        run: |
+          set -euo pipefail
+          cat > /tmp/smoke.mjs <<'NODE'
+          import assert from "node:assert/strict";
+
+          const URL = "https://enzopinotti.github.io/Web-de-profesores/";
+          const targets = await (await fetch("http://127.0.0.1:9222/json/list")).json();
+          const target = targets.find((item) => item.type === "page" && item.url.startsWith(URL));
+          assert.ok(target, "production target missing");
+
+          const ws = new WebSocket(target.webSocketDebuggerUrl);
+          await new Promise((resolve, reject) => {
+            ws.addEventListener("open", resolve, { once: true });
+            ws.addEventListener("error", reject, { once: true });
+          });
+
+          let id = 0;
+          const pending = new Map();
+          ws.addEventListener("message", (event) => {
+            const message = JSON.parse(event.data);
+            const waiter = pending.get(message.id);
+            if (!waiter) return;
+            pending.delete(message.id);
+            if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
+            else waiter.resolve(message.result);
+          });
+
+          const cdp = (method, params = {}) =>
+            new Promise((resolve, reject) => {
+              const current = ++id;
+              pending.set(current, { resolve, reject });
+              ws.send(JSON.stringify({ id: current, method, params }));
+            });
+
+          async function evaluate(expression) {
+            const result = await cdp("Runtime.evaluate", {
+              expression,
+              returnByValue: true,
+              awaitPromise: true,
+            });
+            if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || "evaluation failed");
+            return result.result.value;
+          }
+
+          async function waitFor(expression, label) {
+            for (let n = 0; n < 60; n += 1) {
+              if (await evaluate(expression)) return;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            throw new Error(`timeout: ${label}`);
+          }
+
+          await cdp("Runtime.enable");
+          await waitFor(`document.readyState === 'complete' && !!document.querySelector('#student-form')`, "mount");
+
+          const initial = await evaluate(`({
+            title: document.title,
+            text: document.body.innerText,
+            passwords: document.querySelectorAll('input[type="password"]').length,
+            canonical: document.querySelector('link[rel="canonical"]')?.href
+          })`);
+          assert.equal(initial.title, "Modderhouse — Workspace docente local");
+          assert.equal(initial.passwords, 0);
+          assert.equal(initial.canonical, URL);
+          assert.match(initial.text, /100% local · sin cuentas/);
+          assert.match(initial.text, /Agregar alumno/);
+
+          const setForm = async (name, surname, grade) =>
+            evaluate(`(() => {
+              const values = ${JSON.stringify({ name: "NAME", surname: "SURNAME", grade: "GRADE" })};
+              values.name = ${JSON.stringify("PLACEHOLDER_NAME")};
+              return true;
+            })()`);
+
+          async function add(name, surname, grade) {
+            await evaluate(`(() => {
+              const assign = (selector, value) => {
+                const node = document.querySelector(selector);
+                node.value = value;
+                node.dispatchEvent(new Event('input', { bubbles: true }));
+              };
+              assign('#student-name', ${JSON.stringify(name)});
+              assign('#student-surname', ${JSON.stringify(surname)});
+              assign('#student-grade', ${JSON.stringify(grade)});
+              document.querySelector('#student-form').requestSubmit();
+              return true;
+            })()`);
+          }
+
+          await add("Ada", "Lovelace", "10");
+          await waitFor(`Array.from(document.querySelectorAll('.student-card h3')).some(n => n.textContent === 'Ada Lovelace')`, "add");
+
+          await evaluate(`(() => {
+            const node = document.querySelector('#student-search');
+            node.value = 'Hopper';
+            node.dispatchEvent(new Event('input', { bubbles: true }));
+            return true;
+          })()`);
+          await waitFor(`document.body.innerText.includes('No hay coincidencias.')`, "search");
+
+          await evaluate(`(() => {
+            const node = document.querySelector('#student-search');
+            node.value = '';
+            node.dispatchEvent(new Event('input', { bubbles: true }));
+            document.querySelector('button[aria-label="Eliminar a Ada Lovelace"]').click();
+            return true;
+          })()`);
+          await waitFor(`document.querySelectorAll('.student-card').length === 0`, "remove");
+
+          await add("Grace", "Hopper", "9");
+          await waitFor(`document.querySelectorAll('.student-card').length === 1`, "second add");
+          await evaluate(`document.querySelector('#reset-students').click()`);
+          await waitFor(`!document.querySelector('#reset-confirmation').hidden`, "reset confirmation");
+          await evaluate(`document.querySelector('#confirm-reset').click()`);
+          await waitFor(`document.querySelector('#student-count').textContent === '0 alumnos'`, "reset");
+
+          await evaluate(`localStorage.setItem('Usuarios', JSON.stringify([{ DNI: 'legacy', contraseña: 'legacy' }]))`);
+          await evaluate(`location.reload()`);
+          await waitFor(`document.readyState === 'complete' && !!document.querySelector('#student-form')`, "reload");
+          assert.equal(await evaluate(`localStorage.getItem('Usuarios')`), null);
+          assert.equal(await evaluate(`document.querySelectorAll('input[type="password"]').length`), 0);
+
+          const resources = await evaluate(`performance.getEntriesByType('resource').map(e => e.name)`);
+          assert.equal(resources.some((url) => /tutorEnzo\.jpg|muro-hormigon-gris\.jpg/i.test(url)), false);
+
+          for (const width of [360, 768, 1440]) {
+            await cdp("Emulation.setDeviceMetricsOverride", {
+              width,
+              height: 900,
+              deviceScaleFactor: 1,
+              mobile: false,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            const layout = await evaluate(`({ viewport: window.innerWidth, scrollWidth: document.documentElement.scrollWidth })`);
+            assert.ok(layout.scrollWidth <= layout.viewport, `horizontal overflow at ${width}px`);
+          }
+
+          console.log("Production Chrome smoke passed: live render, add/search/remove/reset, legacy credential purge, media and responsive contracts.");
+          ws.close();
+          NODE
+          node /tmp/smoke.mjs
