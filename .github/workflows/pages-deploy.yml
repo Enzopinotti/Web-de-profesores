@@ -6,6 +6,13 @@ on:
       - main
     paths:
       - "modern/**"
+      - "historical/**"
+      - "index.html"
+      - "robots.txt"
+      - "sitemap.xml"
+      - ".nojekyll"
+      - "assets/index-*.js"
+      - "assets/index-*.css"
       - ".nvmrc"
       - ".github/workflows/pages-deploy.yml"
   workflow_dispatch:
@@ -48,14 +55,24 @@ jobs:
         working-directory: modern
         run: pnpm build
 
+      - name: Verify branch-source mirror parity
+        working-directory: modern
+        run: pnpm pages:mirror:check
+
+      - name: Attach preserved 2023 archive
+        run: |
+          mkdir -p modern/dist/historical/2023
+          cp -a historical/2023/. modern/dist/historical/2023/
+
       - name: Verify Pages artifact contract
         run: |
           test -f modern/dist/index.html
           test -f modern/dist/robots.txt
           test -f modern/dist/sitemap.xml
+          test -f modern/dist/historical/2023/index.html
           grep -Fq 'https://enzopinotti.github.io/Web-de-profesores/' modern/dist/index.html
           grep -Fq 'https://enzopinotti.github.io/Web-de-profesores/sitemap.xml' modern/dist/robots.txt
-          test "$(find modern/dist -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.jfif' \) | wc -l | tr -d ' ')" = "0"
+          test "$(find modern/dist -path 'modern/dist/historical/2023' -prune -o -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.jfif' \) -print | wc -l | tr -d ' ')" = "0"
 
       - name: Configure Pages metadata
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
