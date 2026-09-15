@@ -1,0 +1,76 @@
+name: Pages mirror sync once
+
+on:
+  push:
+    branches:
+      - fix/2026-pages-authority-parity
+    paths:
+      - ".github/workflows/pages-mirror-sync-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out branch with historical baseline
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/2026-pages-authority-parity
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          package_json_file: modern/package.json
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install locked dependencies
+        working-directory: modern
+        run: pnpm install --frozen-lockfile
+
+      - name: Recreate exact 2023 archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf historical/2023
+          mkdir -p historical/2023
+          git archive d6a38f5795569131ff4cd0db63640aff8dc09007 | tar -x -C historical/2023
+
+      - name: Build maintained 2026 application
+        working-directory: modern
+        run: pnpm build
+
+      - name: Synchronize branch-source Pages mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          find assets -maxdepth 1 -type f \( -name 'index-*.js' -o -name 'index-*.css' \) -delete
+          cp modern/dist/index.html index.html
+          cp modern/dist/robots.txt robots.txt
+          cp modern/dist/sitemap.xml sitemap.xml
+          cp modern/dist/assets/index-*.js assets/
+          cp modern/dist/assets/index-*.css assets/
+          touch .nojekyll
+
+      - name: Verify mirror and historical invariants
+        working-directory: modern
+        run: pnpm pages:mirror:check
+
+      - name: Commit synchronized evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add historical/2023 index.html robots.txt sitemap.xml .nojekyll assets/index-*.js assets/index-*.css
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "build: synchronize Pages mirror and exact 2023 archive"
+          git push origin HEAD:fix/2026-pages-authority-parity
