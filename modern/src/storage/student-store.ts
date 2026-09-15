@@ -17,10 +17,24 @@ type StudentEnvelope = Readonly<{
   students: Student[];
 }>;
 
+export type StudentStoreIssue =
+  "corrupt-json" | "unsupported-version" | "invalid-schema";
+
+export type StudentStoreInspection =
+  | Readonly<{ status: "empty"; students: [] }>
+  | Readonly<{ status: "ready"; students: Student[] }>
+  | Readonly<{
+      status: "recovery-needed";
+      students: [];
+      issue: StudentStoreIssue;
+      raw: string;
+    }>;
+
 export type StoreInitialization = Readonly<{
   students: Student[];
   migratedStudents: number;
   purgedLegacyCredentials: boolean;
+  storageIssue: StudentStoreIssue | null;
 }>;
 
 function isStudent(value: unknown): value is Student {
@@ -41,26 +55,61 @@ function isStudent(value: unknown): value is Student {
   );
 }
 
-export function readStudents(storage: Storage): Student[] {
+export function inspectStudentStore(storage: Storage): StudentStoreInspection {
   const raw = storage.getItem(STUDENT_STORAGE_KEY);
   if (raw === null) {
-    return [];
+    return { status: "empty", students: [] };
   }
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as Partial<StudentEnvelope>;
-    if (
-      parsed.version !== STORAGE_VERSION ||
-      !Array.isArray(parsed.students) ||
-      !parsed.students.every(isStudent)
-    ) {
-      return [];
-    }
-
-    return parsed.students;
+    parsed = JSON.parse(raw);
   } catch {
-    return [];
+    return {
+      status: "recovery-needed",
+      students: [],
+      issue: "corrupt-json",
+      raw,
+    };
   }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    return {
+      status: "recovery-needed",
+      students: [],
+      issue: "invalid-schema",
+      raw,
+    };
+  }
+
+  const candidate = parsed as Partial<StudentEnvelope> & { version?: unknown };
+  if (candidate.version !== STORAGE_VERSION) {
+    return {
+      status: "recovery-needed",
+      students: [],
+      issue: "unsupported-version",
+      raw,
+    };
+  }
+
+  if (
+    !Array.isArray(candidate.students) ||
+    !candidate.students.every(isStudent)
+  ) {
+    return {
+      status: "recovery-needed",
+      students: [],
+      issue: "invalid-schema",
+      raw,
+    };
+  }
+
+  return { status: "ready", students: candidate.students };
+}
+
+export function readStudents(storage: Storage): Student[] {
+  const inspection = inspectStudentStore(storage);
+  return inspection.status === "ready" ? inspection.students : [];
 }
 
 export function writeStudents(
@@ -146,15 +195,22 @@ export function initializeStudentStore(
     storage.removeItem(LEGACY_USERS_KEY);
   }
 
-  const currentStudents = readStudents(storage);
-  if (
-    currentStudents.length > 0 ||
-    storage.getItem(STUDENT_STORAGE_KEY) !== null
-  ) {
+  const inspection = inspectStudentStore(storage);
+  if (inspection.status === "ready") {
     return {
-      students: currentStudents,
+      students: inspection.students,
       migratedStudents: 0,
       purgedLegacyCredentials,
+      storageIssue: null,
+    };
+  }
+
+  if (inspection.status === "recovery-needed") {
+    return {
+      students: [],
+      migratedStudents: 0,
+      purgedLegacyCredentials,
+      storageIssue: inspection.issue,
     };
   }
 
@@ -168,5 +224,6 @@ export function initializeStudentStore(
     students: migrated,
     migratedStudents: migrated.length,
     purgedLegacyCredentials,
+    storageIssue: null,
   };
 }
