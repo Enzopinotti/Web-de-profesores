@@ -4,6 +4,7 @@ import {
   LEGACY_USERS_KEY,
   STUDENT_STORAGE_KEY,
   initializeStudentStore,
+  inspectStudentStore,
   readStudents,
 } from "../storage/student-store";
 
@@ -22,6 +23,7 @@ describe("student storage", () => {
 
     const result = initializeStudentStore(window.localStorage, () => "id-1");
     expect(result.purgedLegacyCredentials).toBe(true);
+    expect(result.storageIssue).toBeNull();
     expect(window.localStorage.getItem(LEGACY_USERS_KEY)).toBeNull();
   });
 
@@ -42,6 +44,7 @@ describe("student storage", () => {
 
     expect(result.migratedStudents).toBe(2);
     expect(result.students).toHaveLength(2);
+    expect(result.storageIssue).toBeNull();
     expect(window.localStorage.getItem(LEGACY_STUDENTS_KEY)).toBeNull();
     expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).not.toBeNull();
   });
@@ -57,10 +60,48 @@ describe("student storage", () => {
 
     const result = initializeStudentStore(window.localStorage, () => "id-1");
     expect(result.students).toEqual([]);
+    expect(result.storageIssue).toBeNull();
   });
 
-  it("returns an empty list for corrupted current storage", () => {
+  it("reports corrupted current storage instead of silently treating it as new", () => {
     window.localStorage.setItem(STUDENT_STORAGE_KEY, "not-json");
+
+    expect(inspectStudentStore(window.localStorage)).toMatchObject({
+      status: "recovery-needed",
+      issue: "corrupt-json",
+      raw: "not-json",
+    });
+    expect(initializeStudentStore(window.localStorage)).toMatchObject({
+      students: [],
+      storageIssue: "corrupt-json",
+    });
     expect(readStudents(window.localStorage)).toEqual([]);
+    expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe("not-json");
+  });
+
+  it("distinguishes an unsupported storage version from malformed JSON", () => {
+    window.localStorage.setItem(
+      STUDENT_STORAGE_KEY,
+      JSON.stringify({ version: 99, students: [] }),
+    );
+
+    expect(inspectStudentStore(window.localStorage)).toMatchObject({
+      status: "recovery-needed",
+      issue: "unsupported-version",
+    });
+  });
+
+  it("reports invalid current student schema without overwriting it", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      students: [{ id: "broken", name: "A", surname: "", grade: 99 }],
+    });
+    window.localStorage.setItem(STUDENT_STORAGE_KEY, raw);
+
+    expect(inspectStudentStore(window.localStorage)).toMatchObject({
+      status: "recovery-needed",
+      issue: "invalid-schema",
+    });
+    expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe(raw);
   });
 });
