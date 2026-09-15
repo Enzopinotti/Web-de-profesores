@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "docs:check": "prettier --check \"../README.md\" \"../docs/**/*.md\"",
     "test": "vitest run",
-    "check": "pnpm format:check && pnpm docs:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "pages:mirror:check": "node scripts/check-pages-mirror.mjs",
+    "check": "pnpm format:check && pnpm docs:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm pages:mirror:check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
