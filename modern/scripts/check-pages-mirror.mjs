@@ -11,10 +11,14 @@ const distRoot = resolve(modernRoot, "dist");
 
 const historicalBaseline = {
   "assets/icons8-whatsapp-100.png": "9987cfc24c1dab39ac231a0ddd4d8cfb54edbf89",
-  "assets/imagenesTutores/tutorEnzo.jpg": "ebed2a6173e20b2c5545c1e91a917beb1ca35624",
-  "assets/imagenesTutores/tutorFernanda.jpeg": "7c958651ffcd0ecba64168706d8a12c2ec5edc9b",
-  "assets/imagenesTutores/tutorMaria.jpeg": "0163192bfed54c4540e6d2ff5697b34658179f72",
-  "assets/imagenesTutores/tutorMartin.jpeg": "b850a09dfdf59e0f7b131d9f222a07ad83ca41f8",
+  "assets/imagenesTutores/tutorEnzo.jpg":
+    "ebed2a6173e20b2c5545c1e91a917beb1ca35624",
+  "assets/imagenesTutores/tutorFernanda.jpeg":
+    "7c958651ffcd0ecba64168706d8a12c2ec5edc9b",
+  "assets/imagenesTutores/tutorMaria.jpeg":
+    "0163192bfed54c4540e6d2ff5697b34658179f72",
+  "assets/imagenesTutores/tutorMartin.jpeg":
+    "b850a09dfdf59e0f7b131d9f222a07ad83ca41f8",
   "assets/linea-divisoria.png": "74498de29c59b608524f4a06c50bcffa9a0d84a5",
   "assets/muro-hormigon-gris.jpg": "da436d690025bfd01ce80e8f5a7859cbbc4855f0",
   "assets/usuariopng.jfif": "68ec90a912e241ae2175a09d40fac6a24893e599",
