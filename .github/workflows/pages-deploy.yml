@@ -1,0 +1,78 @@
+name: Deploy modern app to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "modern/**"
+      - ".nvmrc"
+      - ".github/workflows/pages-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: modern/package.json
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: modern/pnpm-lock.yaml
+
+      - name: Install locked dependencies
+        working-directory: modern
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production artifact
+        working-directory: modern
+        run: pnpm build
+
+      - name: Verify Pages artifact contract
+        run: |
+          test -f modern/dist/index.html
+          test -f modern/dist/robots.txt
+          test -f modern/dist/sitemap.xml
+          grep -Fq 'https://enzopinotti.github.io/Web-de-profesores/' modern/dist/index.html
+          grep -Fq 'https://enzopinotti.github.io/Web-de-profesores/sitemap.xml' modern/dist/robots.txt
+          test "$(find modern/dist -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.jfif' \) | wc -l | tr -d ' ')" = "0"
+
+      - name: Configure Pages metadata
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: modern/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
