@@ -1,0 +1,13 @@
+# Modern workspace
+modern/node_modules/
+modern/dist/
+modern/coverage/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+*.swp
