@@ -12,20 +12,19 @@ Baseline exacto:
 
 `d6a38f5795569131ff4cd0db63640aff8dc09007` (`Proyecto final`, 2023-02-16)
 
-La fuente histórica permanece en la raíz:
+Después del cutover de Pages, la copia explícita de esa entrega vive en:
 
-- `index.html`;
-- `views/`;
-- `js/`;
-- `json/`;
-- `estilos/`;
-- `assets/`.
+`historical/2023/`
 
-No se reescribe esa implementación para aparentar que en 2023 usaba herramientas, prácticas o decisiones que todavía no formaban parte del proyecto.
+Sus 14 archivos se recrean directamente desde el commit histórico y el quality recalcula sus Git blob SHA-1 para exigir coincidencia byte-for-byte con el baseline original.
+
+La historia Git sigue siendo la autoridad primaria. No se reescribe la versión 2023 para aparentar que entonces usaba herramientas, prácticas o decisiones que todavía no formaban parte del proyecto.
+
+> Importante: la versión 2023 conserva el comportamiento educativo original que almacenaba DNI/email/contraseña en `localStorage`. No representa autenticación segura y no debe usarse con datos reales.
 
 ### 2026 — reconstrucción y maduración
 
-La aplicación actual vive en `modern/`. Su objetivo no es “sumar tecnologías”, sino resolver mejor los problemas reales del ejercicio original: seguridad conceptual, reglas de dominio, accesibilidad, recuperación de datos, edición, operaciones reversibles, lectura útil del grupo, tests y deployment reproducible.
+La fuente mantenida vive en `modern/`. Su objetivo no es “sumar tecnologías”, sino resolver mejor los problemas reales del ejercicio original: seguridad conceptual, reglas de dominio, accesibilidad, recuperación de datos, edición, operaciones reversibles, lectura útil del grupo, tests y deployment reproducible.
 
 Carriles de trabajo:
 
@@ -130,26 +129,34 @@ Contrato completo de calidad:
 pnpm check
 ```
 
-Incluye formato, documentación, lint, typecheck, tests y build de producción.
+Incluye formato, documentación, lint, typecheck, tests, build de producción, paridad del mirror de Pages y verificación byte-for-byte del archivo 2023.
 
 ## Deployment
 
-El endpoint preparado para la aplicación moderna es:
+Producción:
 
 `https://enzopinotti.github.io/Web-de-profesores/`
 
-Vite usa el base path `/Web-de-profesores/` y el workflow moderno publica `modern/dist` como artefacto.
+`modern/` es la fuente de producto. Vite genera `modern/dist` con base `/Web-de-profesores/`.
 
-El repositorio mantiene deliberadamente la fuente 2023 en la raíz. Por eso el cierre de deployment debe garantizar que preservar el histórico **no genere dos pipelines de Pages compitiendo por la misma URL**. Ese límite operativo se sigue documentando en el carril #1 y no se resuelve sobrescribiendo los archivos históricos.
+GitHub Pages seguía teniendo una publicación legacy desde `main` además del workflow custom. En vez de depender de cuál deploy termina último, el repositorio mantiene una **paridad de autoridades**:
+
+- el workflow custom publica `modern/dist`;
+- la raíz contiene un mirror generado del mismo `dist` (`index.html`, `robots.txt`, `sitemap.xml`, `.nojekyll` y `assets/index-*.{js,css}`);
+- `pnpm pages:mirror:check` exige igualdad byte-for-byte entre ambos;
+- la versión 2023 está aislada en `historical/2023/` y ya no necesita ocupar la entrada de producción.
+
+Así, mientras GitHub mantenga cualquiera de los dos mecanismos de Pages, ambos deben resolver la misma aplicación 2026 en la URL principal.
 
 ## Documentación
 
+- [`historical/README.md`](historical/README.md) — autoridad y límites de la copia histórica exacta;
 - [`docs/version-map.md`](docs/version-map.md) — mapa explícito de las autoridades histórica 2023 y mantenida 2026;
 - [`docs/historical-inventory-2026.md`](docs/historical-inventory-2026.md) — inventario y provenance del proyecto 2023;
 - [`docs/modernization-2026.md`](docs/modernization-2026.md) — arquitectura, seguridad, tests y reconstrucción 2026;
 - [`docs/maturity-2026.md`](docs/maturity-2026.md) — criterios de maduración, continuidad de datos y decisiones de producto;
-- [`docs/deployment-cutover-2026.md`](docs/deployment-cutover-2026.md) — deployment, smoke y rollback.
+- [`docs/deployment-cutover-2026.md`](docs/deployment-cutover-2026.md) — deployment, smoke, autoridad y rollback.
 
 ## Principio de preservación
 
-Este repositorio quiere mostrar evolución real, no borrar etapas anteriores. El código original permanece auditable con sus aciertos y limitaciones. La versión 2026 demuestra cómo resolver hoy el mismo problema con mejores contratos y mejor operación, sin atribuirle retrospectivamente esas decisiones al proyecto de 2023.
+Este repositorio quiere mostrar evolución real, no borrar etapas anteriores. El código original permanece auditable con sus aciertos y limitaciones en el commit histórico y en `historical/2023/`. La versión 2026 demuestra cómo resolver hoy el mismo problema con mejores contratos y mejor operación, sin atribuirle retrospectivamente esas decisiones al proyecto de 2023.
