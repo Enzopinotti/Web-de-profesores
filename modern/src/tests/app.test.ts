@@ -30,15 +30,19 @@ describe("Modderhouse app", () => {
     );
   }
 
-  function addAda(): void {
+  function addStudent(name: string, surname: string, grade: string): void {
     fireEvent.input(screen.getByLabelText("Nombre"), {
-      target: { value: "Ada" },
+      target: { value: name },
     });
     fireEvent.input(screen.getByLabelText("Apellido"), {
-      target: { value: "Lovelace" },
+      target: { value: surname },
     });
-    fireEvent.input(screen.getByLabelText("Nota"), { target: { value: "10" } });
+    fireEvent.input(screen.getByLabelText("Nota"), { target: { value: grade } });
     fireEvent.click(screen.getByRole("button", { name: "Agregar alumno" }));
+  }
+
+  function addAda(): void {
+    addStudent("Ada", "Lovelace", "10");
   }
 
   it("does not render a password or login field", () => {
@@ -58,7 +62,7 @@ describe("Modderhouse app", () => {
     );
   });
 
-  it("adds a valid student and exposes an accessible removal action", () => {
+  it("adds a valid student and exposes edit and removal actions", () => {
     mount();
     addAda();
 
@@ -66,27 +70,82 @@ describe("Modderhouse app", () => {
       screen.getByRole("heading", { name: "Ada Lovelace" }),
     ).not.toBeNull();
     expect(
+      screen.getByRole("button", { name: "Editar a Ada Lovelace" }),
+    ).not.toBeNull();
+    expect(
       screen.getByRole("button", { name: "Eliminar a Ada Lovelace" }),
     ).not.toBeNull();
     expect(screen.getByText("1 alumno")).not.toBeNull();
   });
 
+  it("edits a student without changing the stable id", () => {
+    mount();
+    addAda();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editar a Ada Lovelace" }),
+    );
+    expect(screen.getByText("Editando a Ada Lovelace.")).not.toBeNull();
+    fireEvent.input(screen.getByLabelText("Apellido"), {
+      target: { value: "Byron" },
+    });
+    fireEvent.input(screen.getByLabelText("Nota"), { target: { value: "9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    expect(screen.getByRole("heading", { name: "Ada Byron" })).not.toBeNull();
+    const stored = JSON.parse(
+      window.localStorage.getItem(STUDENT_STORAGE_KEY) ?? "{}",
+    ) as { students?: Array<{ id?: string; surname?: string; grade?: number }> };
+    expect(stored.students?.[0]).toMatchObject({
+      id: "student-1",
+      surname: "Byron",
+      grade: 9,
+    });
+  });
+
+  it("blocks editing one student into another existing identity", () => {
+    mount();
+    addAda();
+    addStudent("Grace", "Hopper", "9");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editar a Ada Lovelace" }),
+    );
+    fireEvent.input(screen.getByLabelText("Nombre"), {
+      target: { value: "Grace" },
+    });
+    fireEvent.input(screen.getByLabelText("Apellido"), {
+      target: { value: "Hopper" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    expect(
+      screen.getByText("Ya existe otro alumno con ese nombre y apellido."),
+    ).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
+  });
+
+  it("cancels editing without mutating persistence", () => {
+    mount();
+    addAda();
+    const before = window.localStorage.getItem(STUDENT_STORAGE_KEY);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Editar a Ada Lovelace" }),
+    );
+    fireEvent.input(screen.getByLabelText("Apellido"), {
+      target: { value: "Changed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar edición" }));
+
+    expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe(before);
+    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
+  });
+
   it("blocks duplicate students after normalization", () => {
     mount();
-    const name = screen.getByLabelText("Nombre");
-    const surname = screen.getByLabelText("Apellido");
-    const grade = screen.getByLabelText("Nota");
-    const add = screen.getByRole("button", { name: "Agregar alumno" });
-
-    fireEvent.input(name, { target: { value: "María" } });
-    fireEvent.input(surname, { target: { value: "Gómez" } });
-    fireEvent.input(grade, { target: { value: "8" } });
-    fireEvent.click(add);
-
-    fireEvent.input(name, { target: { value: "maria" } });
-    fireEvent.input(surname, { target: { value: "gomez" } });
-    fireEvent.input(grade, { target: { value: "7" } });
-    fireEvent.click(add);
+    addStudent("María", "Gómez", "8");
+    addStudent("maria", "gomez", "7");
 
     expect(screen.getByText("Ese alumno ya está cargado.")).not.toBeNull();
     expect(screen.getByText("1 alumno")).not.toBeNull();
@@ -102,7 +161,47 @@ describe("Modderhouse app", () => {
     expect(screen.getByText("No hay coincidencias.")).not.toBeNull();
   });
 
-  it("requires explicit confirmation before clearing students", () => {
+  it("shows neutral average minimum and maximum summaries", () => {
+    mount();
+    addStudent("Grace", "Hopper", "6");
+    addStudent("Ada", "Lovelace", "10");
+
+    expect(screen.getByText("8", { selector: "#summary-average" })).not.toBeNull();
+    expect(screen.getByText("6", { selector: "#summary-minimum" })).not.toBeNull();
+    expect(screen.getByText("10", { selector: "#summary-maximum" })).not.toBeNull();
+    expect(screen.queryByText(/aprobado|desaprobado/i)).toBeNull();
+  });
+
+  it("orders visible students by grade without changing persistence", () => {
+    mount();
+    addStudent("Grace", "Hopper", "6");
+    addStudent("Ada", "Lovelace", "10");
+    const before = window.localStorage.getItem(STUDENT_STORAGE_KEY);
+
+    fireEvent.change(screen.getByLabelText("Ordenar"), {
+      target: { value: "grade-desc" },
+    });
+
+    const headings = Array.from(
+      document.querySelectorAll<HTMLHeadingElement>(".student-card h3"),
+    ).map((heading) => heading.textContent);
+    expect(headings).toEqual(["Ada Lovelace", "Grace Hopper"]);
+    expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe(before);
+  });
+
+  it("undoes an individual deletion during the current session", () => {
+    mount();
+    addAda();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Eliminar a Ada Lovelace" }),
+    );
+    expect(screen.queryByRole("heading", { name: "Ada Lovelace" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Deshacer" }));
+    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
+  });
+
+  it("requires confirmation before clearing and allows the clear to be undone", () => {
     mount();
     addAda();
 
@@ -113,6 +212,9 @@ describe("Modderhouse app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sí, vaciar" }));
     expect(screen.getByText("0 alumnos")).not.toBeNull();
     expect(screen.getByText("Todavía no hay alumnos.")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Deshacer" }));
+    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
   });
 
   it("exports a versioned backup through an injectable download boundary", () => {
@@ -145,6 +247,7 @@ describe("Modderhouse app", () => {
       screen.getByText("Hay datos locales que necesitan recuperación."),
     ).not.toBeNull();
     expect(screen.getByLabelText("Nombre")).toBeDisabled();
+    expect(screen.getByLabelText("Ordenar")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Exportar backup" })).toBeDisabled();
     expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe("broken-json");
   });
