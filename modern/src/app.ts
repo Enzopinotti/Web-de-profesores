@@ -10,16 +10,32 @@ import {
 } from "./domain/student";
 import { HISTORICAL_TUTORS, tutorInitials } from "./domain/tutors";
 import {
+  importStudentBackup,
+  serializeStudentBackup,
+  type BackupImportMode,
+} from "./storage/student-backup";
+import {
+  STUDENT_STORAGE_KEY,
   clearStudents,
   initializeStudentStore,
   writeStudents,
+  type StudentStoreIssue,
 } from "./storage/student-store";
+
+const HISTORICAL_BASELINE =
+  "https://github.com/Enzopinotti/Web-de-profesores/tree/d6a38f5795569131ff4cd0db63640aff8dc09007";
 
 const fieldSelectors: Record<StudentField, string> = {
   name: "#student-name",
   surname: "#student-surname",
   grade: "#student-grade",
 };
+
+type DownloadTextFile = (
+  filename: string,
+  content: string,
+  mimeType: string,
+) => void;
 
 function requiredElement<T extends Element>(
   root: ParentNode,
@@ -30,6 +46,34 @@ function requiredElement<T extends Element>(
     throw new Error(`Required element not found: ${selector}`);
   }
   return element as T;
+}
+
+function defaultDownloadTextFile(
+  filename: string,
+  content: string,
+  mimeType: string,
+): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.hidden = true;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function storageIssueMessage(issue: StudentStoreIssue): string {
+  switch (issue) {
+    case "corrupt-json":
+      return "La copia local no contiene JSON válido.";
+    case "unsupported-version":
+      return "La copia local pertenece a una versión que esta aplicación no puede interpretar.";
+    case "invalid-schema":
+      return "La copia local tiene una estructura que no cumple el contrato actual de alumnos.";
+  }
 }
 
 function createTutorCard(
@@ -57,10 +101,15 @@ export function mountApp(
   root: HTMLElement,
   storage: Storage = window.localStorage,
   idFactory: () => string = () => crypto.randomUUID(),
+  downloadTextFile: DownloadTextFile = defaultDownloadTextFile,
 ): void {
   const initialization = initializeStudentStore(storage, idFactory);
   let students: Student[] = initialization.students;
   let searchQuery = "";
+  let recoveryPending = initialization.storageIssue !== null;
+  const recoveryRaw = recoveryPending
+    ? (storage.getItem(STUDENT_STORAGE_KEY) ?? "")
+    : "";
 
   root.innerHTML = `
     <div class="site-shell">
@@ -83,8 +132,9 @@ export function mountApp(
             Esta versión preserva la idea del simulador original de JavaScript, pero ya no solicita DNI ni contraseña. Los alumnos se guardan únicamente en este navegador.
           </p>
           <div class="archive-note">
-            <strong>Qué cambió</strong>
-            <p>El proyecto 2023 sigue disponible en Git como evidencia histórica. La versión actual convierte sus reglas implícitas en contratos testeables y accesibles.</p>
+            <strong>Dos etapas del mismo proyecto</strong>
+            <p>La entrega 2023 permanece intacta como evidencia histórica. La versión 2026 agrega contratos de datos, recuperación, accesibilidad y operación sin reescribir retrospectivamente lo aprendido.</p>
+            <a href="${HISTORICAL_BASELINE}">Ver baseline histórico exacto de 2023</a>
           </div>
         </section>
 
@@ -95,6 +145,23 @@ export function mountApp(
               <h2 id="workspace-title">Alumnos</h2>
             </div>
             <span id="student-count" class="count-pill">0 alumnos</span>
+          </div>
+
+          <div id="storage-recovery" class="recovery-panel" role="alert" hidden>
+            <strong>Hay datos locales que necesitan recuperación.</strong>
+            <p id="storage-recovery-message"></p>
+            <p>No los sobrescribimos. Podés restaurar un backup válido o guardar una copia del dato original antes de descartarlo.</p>
+            <div class="recovery-actions">
+              <button id="download-recovery" class="button button--quiet" type="button">Descargar dato original</button>
+              <button id="discard-recovery" class="button button--danger" type="button">Descartar y empezar de cero</button>
+            </div>
+            <div id="discard-recovery-confirmation" class="reset-confirmation" hidden>
+              <p><strong>¿Descartar el dato no legible?</strong> Esta acción elimina esa copia local. Descargala antes si querés conservarla.</p>
+              <div>
+                <button id="confirm-discard-recovery" class="button button--danger" type="button">Sí, descartar</button>
+                <button id="cancel-discard-recovery" class="button button--quiet" type="button">Cancelar</button>
+              </div>
+            </div>
           </div>
 
           <form id="student-form" class="student-form" novalidate>
@@ -132,6 +199,27 @@ export function mountApp(
             </div>
           </div>
 
+          <section class="data-tools" aria-labelledby="data-tools-title">
+            <div>
+              <p class="eyebrow">CONTINUIDAD DE DATOS</p>
+              <h3 id="data-tools-title">Backup y restauración</h3>
+              <p>Los datos siguen siendo locales. El backup permite moverlos o recuperarlos sin crear una cuenta ni enviarlos a un servidor.</p>
+            </div>
+            <div class="data-actions">
+              <button id="export-backup" class="button button--quiet" type="button">Exportar backup</button>
+              <div class="backup-file-field">
+                <label for="backup-file">Archivo de backup</label>
+                <input id="backup-file" type="file" accept="application/json,.json" />
+              </div>
+              <fieldset class="backup-mode">
+                <legend>Al restaurar</legend>
+                <label><input type="radio" name="backup-mode" value="replace" checked /> Reemplazar lista actual</label>
+                <label><input id="backup-mode-merge" type="radio" name="backup-mode" value="merge" /> Combinar sin duplicar</label>
+              </fieldset>
+              <button id="restore-backup" class="button button--primary data-restore-button" type="button">Restaurar backup</button>
+            </div>
+          </section>
+
           <p id="app-status" class="status-message" role="status" aria-live="polite"></p>
           <div id="student-empty" class="empty-state">
             <strong>Todavía no hay alumnos.</strong>
@@ -165,20 +253,22 @@ export function mountApp(
   const count = requiredElement<HTMLElement>(root, "#student-count");
   const search = requiredElement<HTMLInputElement>(root, "#student-search");
   const status = requiredElement<HTMLElement>(root, "#app-status");
-  const resetButton = requiredElement<HTMLButtonElement>(
-    root,
-    "#reset-students",
-  );
-  const resetConfirmation = requiredElement<HTMLElement>(
-    root,
-    "#reset-confirmation",
-  );
-  const confirmReset = requiredElement<HTMLButtonElement>(
-    root,
-    "#confirm-reset",
-  );
+  const resetButton = requiredElement<HTMLButtonElement>(root, "#reset-students");
+  const resetConfirmation = requiredElement<HTMLElement>(root, "#reset-confirmation");
+  const confirmReset = requiredElement<HTMLButtonElement>(root, "#confirm-reset");
   const cancelReset = requiredElement<HTMLButtonElement>(root, "#cancel-reset");
   const tutorList = requiredElement<HTMLUListElement>(root, "#tutor-list");
+  const exportBackup = requiredElement<HTMLButtonElement>(root, "#export-backup");
+  const backupFile = requiredElement<HTMLInputElement>(root, "#backup-file");
+  const restoreBackup = requiredElement<HTMLButtonElement>(root, "#restore-backup");
+  const mergeMode = requiredElement<HTMLInputElement>(root, "#backup-mode-merge");
+  const recoveryPanel = requiredElement<HTMLElement>(root, "#storage-recovery");
+  const recoveryMessage = requiredElement<HTMLElement>(root, "#storage-recovery-message");
+  const downloadRecovery = requiredElement<HTMLButtonElement>(root, "#download-recovery");
+  const discardRecovery = requiredElement<HTMLButtonElement>(root, "#discard-recovery");
+  const discardRecoveryConfirmation = requiredElement<HTMLElement>(root, "#discard-recovery-confirmation");
+  const confirmDiscardRecovery = requiredElement<HTMLButtonElement>(root, "#confirm-discard-recovery");
+  const cancelDiscardRecovery = requiredElement<HTMLButtonElement>(root, "#cancel-discard-recovery");
 
   function setStatus(
     message: string,
@@ -188,16 +278,28 @@ export function mountApp(
     status.dataset.tone = tone;
   }
 
+  function setWorkspaceRecoveryState(): void {
+    for (const control of Array.from(
+      form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button"),
+    )) {
+      control.disabled = recoveryPending;
+    }
+    search.disabled = recoveryPending;
+    resetButton.disabled = recoveryPending;
+    exportBackup.disabled = recoveryPending;
+    mergeMode.disabled = recoveryPending;
+    if (recoveryPending) {
+      requiredElement<HTMLInputElement>(
+        root,
+        'input[name="backup-mode"][value="replace"]',
+      ).checked = true;
+    }
+  }
+
   function clearFieldErrors(): void {
     for (const field of Object.keys(fieldSelectors) as StudentField[]) {
-      const input = requiredElement<HTMLInputElement>(
-        form,
-        fieldSelectors[field],
-      );
-      const error = requiredElement<HTMLElement>(
-        form,
-        `#student-${field}-error`,
-      );
+      const input = requiredElement<HTMLInputElement>(form, fieldSelectors[field]);
+      const error = requiredElement<HTMLElement>(form, `#student-${field}-error`);
       input.removeAttribute("aria-invalid");
       error.textContent = "";
     }
@@ -205,18 +307,9 @@ export function mountApp(
 
   function renderFieldErrors(errors: StudentErrors): void {
     clearFieldErrors();
-    for (const [field, message] of Object.entries(errors) as [
-      StudentField,
-      string,
-    ][]) {
-      const input = requiredElement<HTMLInputElement>(
-        form,
-        fieldSelectors[field],
-      );
-      const error = requiredElement<HTMLElement>(
-        form,
-        `#student-${field}-error`,
-      );
+    for (const [field, message] of Object.entries(errors) as [StudentField, string][]) {
+      const input = requiredElement<HTMLInputElement>(form, fieldSelectors[field]);
+      const error = requiredElement<HTMLElement>(form, `#student-${field}-error`);
       input.setAttribute("aria-invalid", "true");
       error.textContent = message;
     }
@@ -231,8 +324,9 @@ export function mountApp(
     count.textContent = `${students.length} ${students.length === 1 ? "alumno" : "alumnos"}`;
 
     if (students.length === 0) {
-      emptyState.innerHTML =
-        "<strong>Todavía no hay alumnos.</strong><span>Agregá el primero con el formulario.</span>";
+      emptyState.innerHTML = recoveryPending
+        ? "<strong>Los datos locales están en modo recuperación.</strong><span>Restaurá un backup o descartá explícitamente el dato no legible antes de continuar.</span>"
+        : "<strong>Todavía no hay alumnos.</strong><span>Agregá el primero con el formulario.</span>";
       emptyState.hidden = false;
       return;
     }
@@ -261,23 +355,26 @@ export function mountApp(
       remove.type = "button";
       remove.className = "button button--quiet button--compact";
       remove.textContent = "Eliminar";
-      remove.setAttribute(
-        "aria-label",
-        `Eliminar a ${student.name} ${student.surname}`,
-      );
+      remove.setAttribute("aria-label", `Eliminar a ${student.name} ${student.surname}`);
       remove.addEventListener("click", () => {
         students = students.filter((candidate) => candidate.id !== student.id);
         writeStudents(storage, students);
         renderStudents();
-        setStatus(
-          `${student.name} ${student.surname} fue eliminado.`,
-          "success",
-        );
+        setStatus(`${student.name} ${student.surname} fue eliminado.`, "success");
       });
 
       item.append(copy, remove);
       list.append(item);
     }
+  }
+
+  function finishRecovery(message: string): void {
+    recoveryPending = false;
+    recoveryPanel.hidden = true;
+    discardRecoveryConfirmation.hidden = true;
+    setWorkspaceRecoveryState();
+    renderStudents();
+    setStatus(message, "success");
   }
 
   for (const tutor of HISTORICAL_TUTORS) {
@@ -288,6 +385,11 @@ export function mountApp(
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (recoveryPending) {
+      setStatus("Resolvé primero el estado de recuperación de datos.", "error");
+      return;
+    }
+
     const formData = new FormData(form);
     const validation = validateStudentDraft({
       name: String(formData.get("name") ?? ""),
@@ -298,13 +400,9 @@ export function mountApp(
     if (!validation.valid) {
       renderFieldErrors(validation.errors);
       setStatus("Revisá los campos marcados antes de guardar.", "error");
-      const firstError = Object.keys(validation.errors)[0] as
-        StudentField | undefined;
+      const firstError = Object.keys(validation.errors)[0] as StudentField | undefined;
       if (firstError !== undefined) {
-        requiredElement<HTMLInputElement>(
-          form,
-          fieldSelectors[firstError],
-        ).focus();
+        requiredElement<HTMLInputElement>(form, fieldSelectors[firstError]).focus();
       }
       return;
     }
@@ -355,6 +453,107 @@ export function mountApp(
     resetButton.focus();
   });
 
+  exportBackup.addEventListener("click", () => {
+    const date = new Date().toISOString().slice(0, 10);
+    downloadTextFile(
+      `modderhouse-alumnos-${date}.json`,
+      serializeStudentBackup(students),
+      "application/json;charset=utf-8",
+    );
+    setStatus(
+      `Backup exportado con ${students.length} ${students.length === 1 ? "alumno" : "alumnos"}.`,
+      "success",
+    );
+  });
+
+  restoreBackup.addEventListener("click", async () => {
+    const file = backupFile.files?.[0];
+    if (file === undefined) {
+      setStatus("Elegí primero un archivo de backup.", "error");
+      backupFile.focus();
+      return;
+    }
+
+    const selectedMode = requiredElement<HTMLInputElement>(
+      root,
+      'input[name="backup-mode"]:checked',
+    ).value as BackupImportMode;
+
+    if (recoveryPending && selectedMode === "merge") {
+      setStatus(
+        "En modo recuperación sólo se puede reemplazar la copia no legible por un backup válido.",
+        "error",
+      );
+      return;
+    }
+
+    let raw: string;
+    try {
+      raw = await file.text();
+    } catch {
+      setStatus("No pudimos leer el archivo seleccionado.", "error");
+      return;
+    }
+
+    const result = importStudentBackup(raw, students, selectedMode);
+    if (!result.ok) {
+      setStatus(result.message, "error");
+      return;
+    }
+
+    students = result.students;
+    searchQuery = "";
+    search.value = "";
+    writeStudents(storage, students);
+    backupFile.value = "";
+
+    const duplicateCopy =
+      result.skippedDuplicates > 0
+        ? ` Se omitieron ${result.skippedDuplicates} duplicados.`
+        : "";
+    const successMessage = `Backup restaurado: ${result.imported} ${result.imported === 1 ? "alumno incorporado" : "alumnos incorporados"}.${duplicateCopy}`;
+
+    if (recoveryPending) {
+      finishRecovery(successMessage);
+      return;
+    }
+
+    renderStudents();
+    setStatus(successMessage, "success");
+  });
+
+  downloadRecovery.addEventListener("click", () => {
+    downloadTextFile(
+      `modderhouse-dato-no-legible-${new Date().toISOString().slice(0, 10)}.txt`,
+      recoveryRaw,
+      "text/plain;charset=utf-8",
+    );
+    setStatus("Se descargó una copia del dato local no legible.", "success");
+  });
+
+  discardRecovery.addEventListener("click", () => {
+    discardRecoveryConfirmation.hidden = false;
+    confirmDiscardRecovery.focus();
+  });
+
+  cancelDiscardRecovery.addEventListener("click", () => {
+    discardRecoveryConfirmation.hidden = true;
+    discardRecovery.focus();
+  });
+
+  confirmDiscardRecovery.addEventListener("click", () => {
+    clearStudents(storage);
+    students = [];
+    finishRecovery("Se descartó explícitamente el dato no legible. El workspace vuelve a estar disponible.");
+    requiredElement<HTMLInputElement>(form, "#student-name").focus();
+  });
+
+  if (initialization.storageIssue !== null) {
+    recoveryPanel.hidden = false;
+    recoveryMessage.textContent = storageIssueMessage(initialization.storageIssue);
+  }
+
+  setWorkspaceRecoveryState();
   renderStudents();
 
   const initializationMessages: string[] = [];
@@ -368,7 +567,7 @@ export function mountApp(
       `Se migraron ${initialization.migratedStudents} alumnos válidos desde la versión histórica.`,
     );
   }
-  if (initializationMessages.length > 0) {
+  if (initializationMessages.length > 0 && !recoveryPending) {
     setStatus(initializationMessages.join(" "), "success");
   }
 }
