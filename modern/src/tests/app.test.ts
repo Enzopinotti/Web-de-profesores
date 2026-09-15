@@ -26,13 +26,21 @@ describe("Modderhouse app", () => {
 
   it("adds a valid student and exposes an accessible removal action", () => {
     mount();
-    fireEvent.input(screen.getByLabelText("Nombre"), { target: { value: "Ada" } });
-    fireEvent.input(screen.getByLabelText("Apellido"), { target: { value: "Lovelace" } });
+    fireEvent.input(screen.getByLabelText("Nombre"), {
+      target: { value: "Ada" },
+    });
+    fireEvent.input(screen.getByLabelText("Apellido"), {
+      target: { value: "Lovelace" },
+    });
     fireEvent.input(screen.getByLabelText("Nota"), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: "Agregar alumno" }));
 
-    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Eliminar a Ada Lovelace" })).not.toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Ada Lovelace" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Eliminar a Ada Lovelace" }),
+    ).not.toBeNull();
     expect(screen.getByText("1 alumno")).not.toBeNull();
   });
 
@@ -59,8 +67,12 @@ describe("Modderhouse app", () => {
 
   it("searches students and exposes a distinct empty search state", () => {
     mount();
-    fireEvent.input(screen.getByLabelText("Nombre"), { target: { value: "Ada" } });
-    fireEvent.input(screen.getByLabelText("Apellido"), { target: { value: "Lovelace" } });
+    fireEvent.input(screen.getByLabelText("Nombre"), {
+      target: { value: "Ada" },
+    });
+    fireEvent.input(screen.getByLabelText("Apellido"), {
+      target: { value: "Lovelace" },
+    });
     fireEvent.input(screen.getByLabelText("Nota"), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: "Agregar alumno" }));
 
@@ -72,8 +84,12 @@ describe("Modderhouse app", () => {
 
   it("requires explicit confirmation before clearing students", () => {
     mount();
-    fireEvent.input(screen.getByLabelText("Nombre"), { target: { value: "Ada" } });
-    fireEvent.input(screen.getByLabelText("Apellido"), { target: { value: "Lovelace" } });
+    fireEvent.input(screen.getByLabelText("Nombre"), {
+      target: { value: "Ada" },
+    });
+    fireEvent.input(screen.getByLabelText("Apellido"), {
+      target: { value: "Lovelace" },
+    });
     fireEvent.input(screen.getByLabelText("Nota"), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: "Agregar alumno" }));
 

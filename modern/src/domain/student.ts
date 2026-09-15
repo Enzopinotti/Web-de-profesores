@@ -89,7 +89,9 @@ export function createStudent(
   };
 }
 
-export function studentIdentityKey(student: Pick<Student, "name" | "surname">): string {
+export function studentIdentityKey(
+  student: Pick<Student, "name" | "surname">,
+): string {
   return `${normalizeForComparison(student.name)}::${normalizeForComparison(student.surname)}`;
 }
 
@@ -98,7 +100,9 @@ export function isDuplicateStudent(
   candidate: Pick<Student, "name" | "surname">,
 ): boolean {
   const candidateKey = studentIdentityKey(candidate);
-  return students.some((student) => studentIdentityKey(student) === candidateKey);
+  return students.some(
+    (student) => studentIdentityKey(student) === candidateKey,
+  );
 }
 
 export function matchesStudent(student: Student, query: string): boolean {
@@ -108,8 +112,12 @@ export function matchesStudent(student: Student, query: string): boolean {
   }
 
   const fullName = normalizeForComparison(`${student.name} ${student.surname}`);
-  const inverseName = normalizeForComparison(`${student.surname} ${student.name}`);
-  return fullName.includes(normalizedQuery) || inverseName.includes(normalizedQuery);
+  const inverseName = normalizeForComparison(
+    `${student.surname} ${student.name}`,
+  );
+  return (
+    fullName.includes(normalizedQuery) || inverseName.includes(normalizedQuery)
+  );
 }
 
 export function sortStudents(students: readonly Student[]): Student[] {

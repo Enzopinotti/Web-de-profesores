@@ -63,7 +63,10 @@ export function readStudents(storage: Storage): Student[] {
   }
 }
 
-export function writeStudents(storage: Storage, students: readonly Student[]): void {
+export function writeStudents(
+  storage: Storage,
+  students: readonly Student[],
+): void {
   const payload: StudentEnvelope = {
     version: STORAGE_VERSION,
     students: [...students],
@@ -110,7 +113,10 @@ function migrateLegacyStudents(
       nota?: unknown;
     };
 
-    if (typeof legacy.nombre !== "string" || typeof legacy.apellido !== "string") {
+    if (
+      typeof legacy.nombre !== "string" ||
+      typeof legacy.apellido !== "string"
+    ) {
       continue;
     }
 
@@ -141,7 +147,10 @@ export function initializeStudentStore(
   }
 
   const currentStudents = readStudents(storage);
-  if (currentStudents.length > 0 || storage.getItem(STUDENT_STORAGE_KEY) !== null) {
+  if (
+    currentStudents.length > 0 ||
+    storage.getItem(STUDENT_STORAGE_KEY) !== null
+  ) {
     return {
       students: currentStudents,
       migratedStudents: 0,

@@ -15,7 +15,9 @@ describe("student storage", () => {
   it("purges the historical credential-like Usuarios key", () => {
     window.localStorage.setItem(
       LEGACY_USERS_KEY,
-      JSON.stringify([{ DNI: "historical", email: "historical", contraseña: "historical" }]),
+      JSON.stringify([
+        { DNI: "historical", email: "historical", contraseña: "historical" },
+      ]),
     );
 
     const result = initializeStudentStore(window.localStorage, () => "id-1");
@@ -33,7 +35,10 @@ describe("student storage", () => {
     );
 
     let id = 0;
-    const result = initializeStudentStore(window.localStorage, () => `id-${++id}`);
+    const result = initializeStudentStore(
+      window.localStorage,
+      () => `id-${++id}`,
+    );
 
     expect(result.migratedStudents).toBe(2);
     expect(result.students).toHaveLength(2);

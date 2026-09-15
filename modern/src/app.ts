@@ -21,7 +21,10 @@ const fieldSelectors: Record<StudentField, string> = {
   grade: "#student-grade",
 };
 
-function requiredElement<T extends Element>(root: ParentNode, selector: string): T {
+function requiredElement<T extends Element>(
+  root: ParentNode,
+  selector: string,
+): T {
   const element = root.querySelector(selector);
   if (element === null) {
     throw new Error(`Required element not found: ${selector}`);
@@ -29,7 +32,11 @@ function requiredElement<T extends Element>(root: ParentNode, selector: string):
   return element as T;
 }
 
-function createTutorCard(name: string, surname: string, initials: string): HTMLElement {
+function createTutorCard(
+  name: string,
+  surname: string,
+  initials: string,
+): HTMLElement {
   const item = document.createElement("li");
   item.className = "tutor-card";
 
@@ -158,21 +165,39 @@ export function mountApp(
   const count = requiredElement<HTMLElement>(root, "#student-count");
   const search = requiredElement<HTMLInputElement>(root, "#student-search");
   const status = requiredElement<HTMLElement>(root, "#app-status");
-  const resetButton = requiredElement<HTMLButtonElement>(root, "#reset-students");
-  const resetConfirmation = requiredElement<HTMLElement>(root, "#reset-confirmation");
-  const confirmReset = requiredElement<HTMLButtonElement>(root, "#confirm-reset");
+  const resetButton = requiredElement<HTMLButtonElement>(
+    root,
+    "#reset-students",
+  );
+  const resetConfirmation = requiredElement<HTMLElement>(
+    root,
+    "#reset-confirmation",
+  );
+  const confirmReset = requiredElement<HTMLButtonElement>(
+    root,
+    "#confirm-reset",
+  );
   const cancelReset = requiredElement<HTMLButtonElement>(root, "#cancel-reset");
   const tutorList = requiredElement<HTMLUListElement>(root, "#tutor-list");
 
-  function setStatus(message: string, tone: "neutral" | "success" | "error" = "neutral"): void {
+  function setStatus(
+    message: string,
+    tone: "neutral" | "success" | "error" = "neutral",
+  ): void {
     status.textContent = message;
     status.dataset.tone = tone;
   }
 
   function clearFieldErrors(): void {
     for (const field of Object.keys(fieldSelectors) as StudentField[]) {
-      const input = requiredElement<HTMLInputElement>(form, fieldSelectors[field]);
-      const error = requiredElement<HTMLElement>(form, `#student-${field}-error`);
+      const input = requiredElement<HTMLInputElement>(
+        form,
+        fieldSelectors[field],
+      );
+      const error = requiredElement<HTMLElement>(
+        form,
+        `#student-${field}-error`,
+      );
       input.removeAttribute("aria-invalid");
       error.textContent = "";
     }
@@ -180,9 +205,18 @@ export function mountApp(
 
   function renderFieldErrors(errors: StudentErrors): void {
     clearFieldErrors();
-    for (const [field, message] of Object.entries(errors) as [StudentField, string][]) {
-      const input = requiredElement<HTMLInputElement>(form, fieldSelectors[field]);
-      const error = requiredElement<HTMLElement>(form, `#student-${field}-error`);
+    for (const [field, message] of Object.entries(errors) as [
+      StudentField,
+      string,
+    ][]) {
+      const input = requiredElement<HTMLInputElement>(
+        form,
+        fieldSelectors[field],
+      );
+      const error = requiredElement<HTMLElement>(
+        form,
+        `#student-${field}-error`,
+      );
       input.setAttribute("aria-invalid", "true");
       error.textContent = message;
     }
@@ -197,13 +231,15 @@ export function mountApp(
     count.textContent = `${students.length} ${students.length === 1 ? "alumno" : "alumnos"}`;
 
     if (students.length === 0) {
-      emptyState.innerHTML = "<strong>Todavía no hay alumnos.</strong><span>Agregá el primero con el formulario.</span>";
+      emptyState.innerHTML =
+        "<strong>Todavía no hay alumnos.</strong><span>Agregá el primero con el formulario.</span>";
       emptyState.hidden = false;
       return;
     }
 
     if (visibleStudents.length === 0) {
-      emptyState.innerHTML = "<strong>No hay coincidencias.</strong><span>Probá con otro nombre o apellido.</span>";
+      emptyState.innerHTML =
+        "<strong>No hay coincidencias.</strong><span>Probá con otro nombre o apellido.</span>";
       emptyState.hidden = false;
       return;
     }
@@ -225,12 +261,18 @@ export function mountApp(
       remove.type = "button";
       remove.className = "button button--quiet button--compact";
       remove.textContent = "Eliminar";
-      remove.setAttribute("aria-label", `Eliminar a ${student.name} ${student.surname}`);
+      remove.setAttribute(
+        "aria-label",
+        `Eliminar a ${student.name} ${student.surname}`,
+      );
       remove.addEventListener("click", () => {
         students = students.filter((candidate) => candidate.id !== student.id);
         writeStudents(storage, students);
         renderStudents();
-        setStatus(`${student.name} ${student.surname} fue eliminado.`, "success");
+        setStatus(
+          `${student.name} ${student.surname} fue eliminado.`,
+          "success",
+        );
       });
 
       item.append(copy, remove);
@@ -239,7 +281,9 @@ export function mountApp(
   }
 
   for (const tutor of HISTORICAL_TUTORS) {
-    tutorList.append(createTutorCard(tutor.name, tutor.surname, tutorInitials(tutor)));
+    tutorList.append(
+      createTutorCard(tutor.name, tutor.surname, tutorInitials(tutor)),
+    );
   }
 
   form.addEventListener("submit", (event) => {
@@ -254,9 +298,13 @@ export function mountApp(
     if (!validation.valid) {
       renderFieldErrors(validation.errors);
       setStatus("Revisá los campos marcados antes de guardar.", "error");
-      const firstError = Object.keys(validation.errors)[0] as StudentField | undefined;
+      const firstError = Object.keys(validation.errors)[0] as
+        StudentField | undefined;
       if (firstError !== undefined) {
-        requiredElement<HTMLInputElement>(form, fieldSelectors[firstError]).focus();
+        requiredElement<HTMLInputElement>(
+          form,
+          fieldSelectors[firstError],
+        ).focus();
       }
       return;
     }
@@ -311,7 +359,9 @@ export function mountApp(
 
   const initializationMessages: string[] = [];
   if (initialization.purgedLegacyCredentials) {
-    initializationMessages.push("Se eliminó el registro local de credenciales del simulador 2023.");
+    initializationMessages.push(
+      "Se eliminó el registro local de credenciales del simulador 2023.",
+    );
   }
   if (initialization.migratedStudents > 0) {
     initializationMessages.push(

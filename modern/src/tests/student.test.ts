@@ -14,9 +14,18 @@ describe("student domain", () => {
   });
 
   it("validates the historical grade boundary", () => {
-    expect(validateStudentDraft({ name: "Ada", surname: "Lovelace", grade: "10" }).valid).toBe(true);
-    expect(validateStudentDraft({ name: "Ada", surname: "Lovelace", grade: "10.1" }).valid).toBe(false);
-    expect(validateStudentDraft({ name: "Ada", surname: "Lovelace", grade: "-1" }).valid).toBe(false);
+    expect(
+      validateStudentDraft({ name: "Ada", surname: "Lovelace", grade: "10" })
+        .valid,
+    ).toBe(true);
+    expect(
+      validateStudentDraft({ name: "Ada", surname: "Lovelace", grade: "10.1" })
+        .valid,
+    ).toBe(false);
+    expect(
+      validateStudentDraft({ name: "Ada", surname: "Lovelace", grade: "-1" })
+        .valid,
+    ).toBe(false);
   });
 
   it("rejects incomplete names", () => {
@@ -33,7 +42,9 @@ describe("student domain", () => {
       { name: "María", surname: "Gómez", grade: 8 },
       () => "student-1",
     );
-    expect(isDuplicateStudent([existing], { name: "maria", surname: "gomez" })).toBe(true);
+    expect(
+      isDuplicateStudent([existing], { name: "maria", surname: "gomez" }),
+    ).toBe(true);
   });
 
   it("searches by name or surname without accent sensitivity", () => {
@@ -50,6 +61,9 @@ describe("student domain", () => {
       createStudent({ name: "Grace", surname: "Hopper", grade: 10 }, () => "2"),
       createStudent({ name: "Ada", surname: "Byron", grade: 10 }, () => "1"),
     ];
-    expect(sortStudents(students).map((student) => student.id)).toEqual(["1", "2"]);
+    expect(sortStudents(students).map((student) => student.id)).toEqual([
+      "1",
+      "2",
+    ]);
   });
 });
