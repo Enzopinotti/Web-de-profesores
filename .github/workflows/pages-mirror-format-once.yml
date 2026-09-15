@@ -1,0 +1,46 @@
+name: Pages mirror formatter once
+
+on:
+  push:
+    branches:
+      - fix/2026-pages-authority-parity
+    paths:
+      - ".github/workflows/pages-mirror-format-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/2026-pages-authority-parity
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          package_json_file: modern/package.json
+          run_install: false
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Install locked dependencies
+        working-directory: modern
+        run: pnpm install --frozen-lockfile
+      - name: Format mirror verifier
+        working-directory: modern
+        run: pnpm exec prettier --write scripts/check-pages-mirror.mjs
+      - name: Commit canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add modern/scripts/check-pages-mirror.mjs
+          git commit -m "style: format Pages mirror verifier"
+          git push origin HEAD:fix/2026-pages-authority-parity
