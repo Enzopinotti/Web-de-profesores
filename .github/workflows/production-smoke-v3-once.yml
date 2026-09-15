@@ -1,0 +1,263 @@
+name: Production smoke v3 once
+
+on:
+  push:
+    branches:
+      - ops/production-smoke-once
+    paths:
+      - ".github/workflows/production-smoke-v3-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      URL: https://enzopinotti.github.io/Web-de-profesores/
+
+    steps:
+      - name: Verify live HTTP, metadata and assets
+        run: |
+          set -euo pipefail
+          curl -fLsS "$URL" -o /tmp/page.html
+          grep -Fq '<title>Modderhouse — Workspace docente local</title>' /tmp/page.html
+          grep -Fq 'rel="canonical"' /tmp/page.html
+          grep -Fq 'property="og:url"' /tmp/page.html
+          grep -Fq 'https://enzopinotti.github.io/Web-de-profesores/' /tmp/page.html
+          if grep -Fqi 'type="password"' /tmp/page.html; then exit 1; fi
+
+          curl -fLsS "${URL}robots.txt" -o /tmp/robots.txt
+          curl -fLsS "${URL}sitemap.xml" -o /tmp/sitemap.xml
+          grep -Fq 'Sitemap: https://enzopinotti.github.io/Web-de-profesores/sitemap.xml' /tmp/robots.txt
+          test "$(grep -o '<loc>' /tmp/sitemap.xml | wc -l | tr -d ' ')" = "1"
+          grep -Fq '<loc>https://enzopinotti.github.io/Web-de-profesores/</loc>' /tmp/sitemap.xml
+
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urljoin
+          from urllib.request import urlopen
+
+          base = "https://enzopinotti.github.io/Web-de-profesores/"
+          html = Path("/tmp/page.html").read_text()
+
+          class Assets(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.urls = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == "script" and attrs.get("src"):
+                      self.urls.append(attrs["src"])
+                  if tag == "link" and attrs.get("rel") == "stylesheet" and attrs.get("href"):
+                      self.urls.append(attrs["href"])
+
+          parser = Assets()
+          parser.feed(html)
+          assert len(parser.urls) >= 2, parser.urls
+          for asset in parser.urls:
+              with urlopen(urljoin(base, asset)) as response:
+                  assert response.status == 200, (asset, response.status)
+          print("Production assets resolved:", parser.urls)
+          PY
+
+      - name: Launch production in Chrome
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome"
+          "$chrome" --version
+          "$chrome" --headless=new --no-sandbox --disable-gpu \
+            --remote-debugging-port=9222 --remote-allow-origins='*' \
+            --user-data-dir=/tmp/modderhouse-smoke "$URL" >/tmp/chrome.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/chrome.log
+          exit 1
+
+      - name: Verify live product and responsive behavior
+        run: |
+          set -euo pipefail
+          cat > /tmp/smoke.mjs <<'NODE'
+          import assert from "node:assert/strict";
+
+          const URL = "https://enzopinotti.github.io/Web-de-profesores/";
+          const targets = await (await fetch("http://127.0.0.1:9222/json/list")).json();
+          const target = targets.find((item) => item.type === "page" && item.url.startsWith(URL));
+          assert.ok(target, "production page target missing");
+
+          const ws = new WebSocket(target.webSocketDebuggerUrl);
+          await new Promise((resolve, reject) => {
+            ws.addEventListener("open", resolve, { once: true });
+            ws.addEventListener("error", reject, { once: true });
+          });
+
+          let id = 0;
+          const pending = new Map();
+          ws.addEventListener("message", (event) => {
+            const message = JSON.parse(event.data);
+            const waiter = pending.get(message.id);
+            if (!waiter) return;
+            pending.delete(message.id);
+            if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
+            else waiter.resolve(message.result);
+          });
+
+          const cdp = (method, params = {}) =>
+            new Promise((resolve, reject) => {
+              const current = ++id;
+              pending.set(current, { resolve, reject });
+              ws.send(JSON.stringify({ id: current, method, params }));
+            });
+
+          async function evaluate(expression) {
+            const response = await cdp("Runtime.evaluate", {
+              expression,
+              returnByValue: true,
+              awaitPromise: true,
+            });
+            if (response.exceptionDetails) {
+              throw new Error(response.exceptionDetails.text || "Chrome evaluation failed");
+            }
+            return response.result.value;
+          }
+
+          async function waitFor(expression, label) {
+            for (let attempt = 0; attempt < 60; attempt += 1) {
+              if (await evaluate(expression)) return;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            throw new Error(`Timed out waiting for ${label}`);
+          }
+
+          async function addStudent(name, surname, grade) {
+            await evaluate(`(() => {
+              const setValue = (selector, value) => {
+                const node = document.querySelector(selector);
+                node.value = value;
+                node.dispatchEvent(new Event('input', { bubbles: true }));
+              };
+              setValue('#student-name', ${JSON.stringify(name)});
+              setValue('#student-surname', ${JSON.stringify(surname)});
+              setValue('#student-grade', ${JSON.stringify(grade)});
+              document.querySelector('#student-form').requestSubmit();
+              return true;
+            })()`);
+          }
+
+          await cdp("Runtime.enable");
+          await waitFor(
+            `document.readyState === 'complete' && Boolean(document.querySelector('#student-form'))`,
+            "modern app mount",
+          );
+
+          const initial = await evaluate(`({
+            title: document.title,
+            body: document.body.innerText,
+            passwordFields: document.querySelectorAll('input[type="password"]').length,
+            canonical: document.querySelector('link[rel="canonical"]')?.href
+          })`);
+          assert.equal(initial.title, "Modderhouse — Workspace docente local");
+          assert.equal(initial.passwordFields, 0);
+          assert.equal(initial.canonical, URL);
+          assert.match(initial.body, /100% local · sin cuentas/);
+          assert.match(initial.body, /Agregar alumno/);
+          assert.doesNotMatch(initial.body, /Bienvenido profesor, ingrese sus datos/i);
+
+          await addStudent("Ada", "Lovelace", "10");
+          await waitFor(
+            `Array.from(document.querySelectorAll('.student-card h3')).some((node) => node.textContent === 'Ada Lovelace')`,
+            "student creation",
+          );
+
+          await evaluate(`(() => {
+            const search = document.querySelector('#student-search');
+            search.value = 'Hopper';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            return true;
+          })()`);
+          await waitFor(
+            `document.body.innerText.includes('No hay coincidencias.')`,
+            "search empty state",
+          );
+
+          await evaluate(`(() => {
+            const search = document.querySelector('#student-search');
+            search.value = '';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            document.querySelector('button[aria-label="Eliminar a Ada Lovelace"]').click();
+            return true;
+          })()`);
+          await waitFor(`document.querySelectorAll('.student-card').length === 0`, "student removal");
+
+          await addStudent("Grace", "Hopper", "9");
+          await waitFor(`document.querySelectorAll('.student-card').length === 1`, "second student creation");
+          await evaluate(`document.querySelector('#reset-students').click()`);
+          await waitFor(
+            `!document.querySelector('#reset-confirmation').hidden`,
+            "reset confirmation",
+          );
+          await evaluate(`document.querySelector('#confirm-reset').click()`);
+          await waitFor(
+            `document.querySelector('#student-count').textContent === '0 alumnos'`,
+            "student reset",
+          );
+
+          await evaluate(
+            `localStorage.setItem('Usuarios', JSON.stringify([{ DNI: 'legacy', contraseña: 'legacy' }]))`,
+          );
+          await evaluate(`location.reload()`);
+          await waitFor(
+            `document.readyState === 'complete' && Boolean(document.querySelector('#student-form'))`,
+            "reload after legacy credential seed",
+          );
+          assert.equal(await evaluate(`localStorage.getItem('Usuarios')`), null);
+          assert.equal(await evaluate(`document.querySelectorAll('input[type="password"]').length`), 0);
+
+          const resources = await evaluate(
+            `performance.getEntriesByType('resource').map((entry) => entry.name)`,
+          );
+          assert.equal(
+            resources.some((url) => /tutorEnzo\.jpg|muro-hormigon-gris\.jpg/i.test(url)),
+            false,
+            "heavy historical media was requested by production",
+          );
+
+          const widths = [];
+          for (const width of [360, 768, 1440]) {
+            await cdp("Emulation.setDeviceMetricsOverride", {
+              width,
+              height: 900,
+              deviceScaleFactor: 1,
+              mobile: false,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            const layout = await evaluate(`({
+              viewport: window.innerWidth,
+              documentScrollWidth: document.documentElement.scrollWidth,
+              bodyScrollWidth: document.body.scrollWidth,
+              shellWidth: document.querySelector('.site-shell')?.getBoundingClientRect().width
+            })`);
+            widths.push({ width, ...layout });
+            assert.ok(
+              layout.documentScrollWidth <= layout.viewport,
+              `horizontal document overflow at ${width}px: ${JSON.stringify(layout)}`,
+            );
+            assert.ok(
+              layout.bodyScrollWidth <= layout.viewport,
+              `horizontal body overflow at ${width}px: ${JSON.stringify(layout)}`,
+            );
+          }
+
+          console.log("Responsive evidence:", JSON.stringify(widths));
+          console.log(
+            "Production Chrome smoke passed: render, add/search/remove/reset, credential purge, media and 360/768/1440 responsive contracts.",
+          );
+          ws.close();
+          NODE
+
+          node /tmp/smoke.mjs
