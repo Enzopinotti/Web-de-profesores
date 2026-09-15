@@ -144,6 +144,7 @@ El repositorio mantiene deliberadamente la fuente 2023 en la raíz. Por eso el c
 
 ## Documentación
 
+- [`docs/version-map.md`](docs/version-map.md) — mapa explícito de las autoridades histórica 2023 y mantenida 2026;
 - [`docs/historical-inventory-2026.md`](docs/historical-inventory-2026.md) — inventario y provenance del proyecto 2023;
 - [`docs/modernization-2026.md`](docs/modernization-2026.md) — arquitectura, seguridad, tests y reconstrucción 2026;
 - [`docs/maturity-2026.md`](docs/maturity-2026.md) — criterios de maduración, continuidad de datos y decisiones de producto;
