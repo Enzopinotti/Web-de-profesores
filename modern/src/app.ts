@@ -1,12 +1,16 @@
 import {
   createStudent,
   isDuplicateStudent,
+  isDuplicateStudentExcluding,
   matchesStudent,
-  sortStudents,
+  sortStudentsBy,
+  summarizeStudents,
+  updateStudent,
   validateStudentDraft,
   type Student,
   type StudentErrors,
   type StudentField,
+  type StudentSortMode,
 } from "./domain/student";
 import { HISTORICAL_TUTORS, tutorInitials } from "./domain/tutors";
 import {
@@ -36,6 +40,11 @@ type DownloadTextFile = (
   content: string,
   mimeType: string,
 ) => void;
+
+type UndoSnapshot = Readonly<{
+  students: Student[];
+  message: string;
+}>;
 
 function requiredElement<T extends Element>(
   root: ParentNode,
@@ -76,6 +85,13 @@ function storageIssueMessage(issue: StudentStoreIssue): string {
   }
 }
 
+function formatGrade(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  return value.toLocaleString("es-AR", { maximumFractionDigits: 1 });
+}
+
 function createTutorCard(
   name: string,
   surname: string,
@@ -106,6 +122,9 @@ export function mountApp(
   const initialization = initializeStudentStore(storage, idFactory);
   let students: Student[] = initialization.students;
   let searchQuery = "";
+  let sortMode: StudentSortMode = "surname-asc";
+  let editingStudentId: string | null = null;
+  let undoSnapshot: UndoSnapshot | null = null;
   let recoveryPending = initialization.storageIssue !== null;
   const recoveryRaw = recoveryPending
     ? (storage.getItem(STUDENT_STORAGE_KEY) ?? "")
@@ -180,19 +199,37 @@ export function mountApp(
               <input id="student-grade" name="grade" type="number" min="0" max="10" step="0.1" inputmode="decimal" aria-describedby="student-grade-error" />
               <span id="student-grade-error" class="field-error"></span>
             </div>
-            <button class="button button--primary" type="submit">Agregar alumno</button>
+            <div class="form-actions">
+              <button id="student-submit" class="button button--primary" type="submit">Agregar alumno</button>
+              <button id="cancel-edit" class="button button--quiet" type="button" hidden>Cancelar edición</button>
+            </div>
           </form>
+          <p id="form-mode" class="form-mode" role="status" aria-live="polite"></p>
 
           <div class="student-toolbar">
             <div class="search-field">
               <label for="student-search">Buscar por nombre o apellido</label>
               <input id="student-search" type="search" autocomplete="off" placeholder="Ej. Ada Lovelace" />
             </div>
+            <div class="sort-field">
+              <label for="student-sort">Ordenar</label>
+              <select id="student-sort">
+                <option value="surname-asc">Apellido y nombre</option>
+                <option value="grade-desc">Nota: mayor a menor</option>
+                <option value="grade-asc">Nota: menor a mayor</option>
+              </select>
+            </div>
             <button id="reset-students" class="button button--quiet" type="button">Vaciar lista</button>
           </div>
 
+          <div class="student-summary" aria-label="Resumen neutral de notas">
+            <div><span>Promedio</span><strong id="summary-average">—</strong></div>
+            <div><span>Mínima</span><strong id="summary-minimum">—</strong></div>
+            <div><span>Máxima</span><strong id="summary-maximum">—</strong></div>
+          </div>
+
           <div id="reset-confirmation" class="reset-confirmation" hidden>
-            <p><strong>¿Vaciar todos los alumnos?</strong> Esta acción también borra la copia local.</p>
+            <p><strong>¿Vaciar todos los alumnos?</strong> Esta acción también borra la copia local, pero se puede deshacer durante esta sesión.</p>
             <div>
               <button id="confirm-reset" class="button button--danger" type="button">Sí, vaciar</button>
               <button id="cancel-reset" class="button button--quiet" type="button">Cancelar</button>
@@ -220,6 +257,10 @@ export function mountApp(
             </div>
           </section>
 
+          <div id="undo-panel" class="undo-panel" role="status" aria-live="polite" hidden>
+            <span id="undo-message"></span>
+            <button id="undo-action" class="button button--quiet button--compact" type="button">Deshacer</button>
+          </div>
           <p id="app-status" class="status-message" role="status" aria-live="polite"></p>
           <div id="student-empty" class="empty-state">
             <strong>Todavía no hay alumnos.</strong>
@@ -252,11 +293,21 @@ export function mountApp(
   const emptyState = requiredElement<HTMLElement>(root, "#student-empty");
   const count = requiredElement<HTMLElement>(root, "#student-count");
   const search = requiredElement<HTMLInputElement>(root, "#student-search");
+  const sort = requiredElement<HTMLSelectElement>(root, "#student-sort");
   const status = requiredElement<HTMLElement>(root, "#app-status");
+  const formMode = requiredElement<HTMLElement>(root, "#form-mode");
+  const submitButton = requiredElement<HTMLButtonElement>(root, "#student-submit");
+  const cancelEditButton = requiredElement<HTMLButtonElement>(root, "#cancel-edit");
   const resetButton = requiredElement<HTMLButtonElement>(root, "#reset-students");
   const resetConfirmation = requiredElement<HTMLElement>(root, "#reset-confirmation");
   const confirmReset = requiredElement<HTMLButtonElement>(root, "#confirm-reset");
   const cancelReset = requiredElement<HTMLButtonElement>(root, "#cancel-reset");
+  const summaryAverage = requiredElement<HTMLElement>(root, "#summary-average");
+  const summaryMinimum = requiredElement<HTMLElement>(root, "#summary-minimum");
+  const summaryMaximum = requiredElement<HTMLElement>(root, "#summary-maximum");
+  const undoPanel = requiredElement<HTMLElement>(root, "#undo-panel");
+  const undoMessage = requiredElement<HTMLElement>(root, "#undo-message");
+  const undoAction = requiredElement<HTMLButtonElement>(root, "#undo-action");
   const tutorList = requiredElement<HTMLUListElement>(root, "#tutor-list");
   const exportBackup = requiredElement<HTMLButtonElement>(root, "#export-backup");
   const backupFile = requiredElement<HTMLInputElement>(root, "#backup-file");
@@ -278,22 +329,19 @@ export function mountApp(
     status.dataset.tone = tone;
   }
 
-  function setWorkspaceRecoveryState(): void {
-    for (const control of Array.from(
-      form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button"),
-    )) {
-      control.disabled = recoveryPending;
-    }
-    search.disabled = recoveryPending;
-    resetButton.disabled = recoveryPending;
-    exportBackup.disabled = recoveryPending;
-    mergeMode.disabled = recoveryPending;
-    if (recoveryPending) {
-      requiredElement<HTMLInputElement>(
-        root,
-        'input[name="backup-mode"][value="replace"]',
-      ).checked = true;
-    }
+  function clearUndo(): void {
+    undoSnapshot = null;
+    undoPanel.hidden = true;
+    undoMessage.textContent = "";
+  }
+
+  function rememberUndo(previousStudents: readonly Student[], message: string): void {
+    undoSnapshot = {
+      students: [...previousStudents],
+      message,
+    };
+    undoMessage.textContent = `${message} Podés deshacer esta acción.`;
+    undoPanel.hidden = false;
   }
 
   function clearFieldErrors(): void {
@@ -302,6 +350,51 @@ export function mountApp(
       const error = requiredElement<HTMLElement>(form, `#student-${field}-error`);
       input.removeAttribute("aria-invalid");
       error.textContent = "";
+    }
+  }
+
+  function cancelEditing(focusName = false): void {
+    editingStudentId = null;
+    form.reset();
+    clearFieldErrors();
+    submitButton.textContent = "Agregar alumno";
+    cancelEditButton.hidden = true;
+    formMode.textContent = "";
+    if (focusName) {
+      requiredElement<HTMLInputElement>(form, "#student-name").focus();
+    }
+  }
+
+  function startEditing(student: Student): void {
+    editingStudentId = student.id;
+    requiredElement<HTMLInputElement>(form, "#student-name").value = student.name;
+    requiredElement<HTMLInputElement>(form, "#student-surname").value = student.surname;
+    requiredElement<HTMLInputElement>(form, "#student-grade").value = String(student.grade);
+    clearFieldErrors();
+    submitButton.textContent = "Guardar cambios";
+    cancelEditButton.hidden = false;
+    formMode.textContent = `Editando a ${student.name} ${student.surname}.`;
+    requiredElement<HTMLInputElement>(form, "#student-name").focus();
+  }
+
+  function setWorkspaceRecoveryState(): void {
+    for (const control of Array.from(
+      form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button"),
+    )) {
+      control.disabled = recoveryPending;
+    }
+    search.disabled = recoveryPending;
+    sort.disabled = recoveryPending;
+    resetButton.disabled = recoveryPending;
+    exportBackup.disabled = recoveryPending;
+    mergeMode.disabled = recoveryPending;
+    if (recoveryPending) {
+      requiredElement<HTMLInputElement>(
+        root,
+        'input[name="backup-mode"][value="replace"]',
+      ).checked = true;
+      cancelEditing();
+      clearUndo();
     }
   }
 
@@ -315,13 +408,21 @@ export function mountApp(
     }
   }
 
+  function renderSummary(): void {
+    const summary = summarizeStudents(students);
+    summaryAverage.textContent = formatGrade(summary.average);
+    summaryMinimum.textContent = formatGrade(summary.minimum);
+    summaryMaximum.textContent = formatGrade(summary.maximum);
+  }
+
   function renderStudents(): void {
     list.replaceChildren();
-    const visibleStudents = sortStudents(students).filter((student) =>
+    const visibleStudents = sortStudentsBy(students, sortMode).filter((student) =>
       matchesStudent(student, searchQuery),
     );
 
     count.textContent = `${students.length} ${students.length === 1 ? "alumno" : "alumnos"}`;
+    renderSummary();
 
     if (students.length === 0) {
       emptyState.innerHTML = recoveryPending
@@ -351,19 +452,44 @@ export function mountApp(
       grade.textContent = `Nota: ${student.grade.toLocaleString("es-AR")}`;
       copy.append(heading, grade);
 
+      const actions = document.createElement("div");
+      actions.className = "student-card-actions";
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "button button--quiet button--compact";
+      edit.textContent = "Editar";
+      edit.setAttribute(
+        "aria-label",
+        `Editar a ${student.name} ${student.surname}`,
+      );
+      edit.addEventListener("click", () => startEditing(student));
+
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "button button--quiet button--compact";
       remove.textContent = "Eliminar";
-      remove.setAttribute("aria-label", `Eliminar a ${student.name} ${student.surname}`);
+      remove.setAttribute(
+        "aria-label",
+        `Eliminar a ${student.name} ${student.surname}`,
+      );
       remove.addEventListener("click", () => {
+        const previousStudents = students;
         students = students.filter((candidate) => candidate.id !== student.id);
+        if (editingStudentId === student.id) {
+          cancelEditing();
+        }
         writeStudents(storage, students);
+        rememberUndo(
+          previousStudents,
+          `${student.name} ${student.surname} fue eliminado.`,
+        );
         renderStudents();
         setStatus(`${student.name} ${student.surname} fue eliminado.`, "success");
       });
 
-      item.append(copy, remove);
+      actions.append(edit, remove);
+      item.append(copy, actions);
       list.append(item);
     }
   }
@@ -408,12 +534,54 @@ export function mountApp(
     }
 
     clearFieldErrors();
+
+    if (editingStudentId !== null) {
+      const original = students.find((student) => student.id === editingStudentId);
+      if (original === undefined) {
+        cancelEditing(true);
+        setStatus("El alumno que estabas editando ya no existe.", "error");
+        return;
+      }
+
+      if (
+        isDuplicateStudentExcluding(
+          students,
+          validation.value,
+          editingStudentId,
+        )
+      ) {
+        setStatus("Ya existe otro alumno con ese nombre y apellido.", "error");
+        requiredElement<HTMLInputElement>(form, "#student-name").focus();
+        return;
+      }
+
+      const previousStudents = students;
+      const updated = updateStudent(original, validation.value);
+      students = students.map((student) =>
+        student.id === updated.id ? updated : student,
+      );
+      writeStudents(storage, students);
+      rememberUndo(
+        previousStudents,
+        `Se actualizaron los datos de ${updated.name} ${updated.surname}.`,
+      );
+      cancelEditing();
+      renderStudents();
+      setStatus(
+        `${updated.name} ${updated.surname} fue actualizado sin cambiar su identificador.`,
+        "success",
+      );
+      requiredElement<HTMLInputElement>(form, "#student-name").focus();
+      return;
+    }
+
     if (isDuplicateStudent(students, validation.value)) {
       setStatus("Ese alumno ya está cargado.", "error");
       requiredElement<HTMLInputElement>(form, "#student-name").focus();
       return;
     }
 
+    clearUndo();
     const student = createStudent(validation.value, idFactory);
     students = [...students, student];
     writeStudents(storage, students);
@@ -423,8 +591,18 @@ export function mountApp(
     requiredElement<HTMLInputElement>(form, "#student-name").focus();
   });
 
+  cancelEditButton.addEventListener("click", () => {
+    cancelEditing(true);
+    setStatus("La edición fue cancelada.");
+  });
+
   search.addEventListener("input", () => {
     searchQuery = search.value;
+    renderStudents();
+  });
+
+  sort.addEventListener("change", () => {
+    sortMode = sort.value as StudentSortMode;
     renderStudents();
   });
 
@@ -443,14 +621,31 @@ export function mountApp(
   });
 
   confirmReset.addEventListener("click", () => {
+    const previousStudents = students;
     students = [];
     searchQuery = "";
     search.value = "";
     clearStudents(storage);
+    cancelEditing();
     resetConfirmation.hidden = true;
+    rememberUndo(previousStudents, "Se vació la lista local de alumnos.");
     renderStudents();
     setStatus("Se vació la lista local de alumnos.", "success");
     resetButton.focus();
+  });
+
+  undoAction.addEventListener("click", () => {
+    if (undoSnapshot === null) {
+      return;
+    }
+
+    students = undoSnapshot.students;
+    writeStudents(storage, students);
+    cancelEditing();
+    const message = undoSnapshot.message;
+    clearUndo();
+    renderStudents();
+    setStatus(`Acción deshecha: ${message}`, "success");
   });
 
   exportBackup.addEventListener("click", () => {
@@ -501,11 +696,13 @@ export function mountApp(
       return;
     }
 
+    const previousStudents = students;
     students = result.students;
     searchQuery = "";
     search.value = "";
     writeStudents(storage, students);
     backupFile.value = "";
+    cancelEditing();
 
     const duplicateCopy =
       result.skippedDuplicates > 0
@@ -514,10 +711,12 @@ export function mountApp(
     const successMessage = `Backup restaurado: ${result.imported} ${result.imported === 1 ? "alumno incorporado" : "alumnos incorporados"}.${duplicateCopy}`;
 
     if (recoveryPending) {
+      clearUndo();
       finishRecovery(successMessage);
       return;
     }
 
+    rememberUndo(previousStudents, "Se restauró un backup de alumnos.");
     renderStudents();
     setStatus(successMessage, "success");
   });
@@ -544,7 +743,9 @@ export function mountApp(
   confirmDiscardRecovery.addEventListener("click", () => {
     clearStudents(storage);
     students = [];
-    finishRecovery("Se descartó explícitamente el dato no legible. El workspace vuelve a estar disponible.");
+    finishRecovery(
+      "Se descartó explícitamente el dato no legible. El workspace vuelve a estar disponible.",
+    );
     requiredElement<HTMLInputElement>(form, "#student-name").focus();
   });
 
