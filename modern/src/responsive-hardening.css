@@ -1,0 +1,32 @@
+/*
+ * Browser-qualified responsive hardening.
+ *
+ * Production Chrome smoke at 360px exposed an intrinsic-size expansion where
+ * grid/flex children kept their automatic minimum width and forced the page to
+ * 450px. Keep this contract explicit instead of hiding it with overflow-x.
+ */
+.main-layout > *,
+.student-form > *,
+.section-heading > *,
+.student-toolbar > *,
+.student-card > *,
+.tutor-card > * {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .main-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .student-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .student-form,
+  .tutor-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
