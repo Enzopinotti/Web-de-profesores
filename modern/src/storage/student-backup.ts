@@ -180,7 +180,9 @@ export function importStudentBackup(
   }
 
   const merged = [...currentStudents];
-  const currentById = new Map(currentStudents.map((student) => [student.id, student]));
+  const currentById = new Map(
+    currentStudents.map((student) => [student.id, student]),
+  );
   const currentIdentities = new Set(currentStudents.map(studentIdentityKey));
   let imported = 0;
   let skippedDuplicates = 0;

@@ -179,7 +179,9 @@ export function sortStudentsBy(
   });
 }
 
-export function summarizeStudents(students: readonly Student[]): StudentSummary {
+export function summarizeStudents(
+  students: readonly Student[],
+): StudentSummary {
   if (students.length === 0) {
     return {
       count: 0,

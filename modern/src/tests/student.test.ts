@@ -61,9 +61,7 @@ describe("student domain", () => {
       () => "grace",
     );
 
-    expect(
-      isDuplicateStudentExcluding([ada, grace], ada, ada.id),
-    ).toBe(false);
+    expect(isDuplicateStudentExcluding([ada, grace], ada, ada.id)).toBe(false);
     expect(
       isDuplicateStudentExcluding(
         [ada, grace],

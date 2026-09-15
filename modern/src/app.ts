@@ -296,11 +296,26 @@ export function mountApp(
   const sort = requiredElement<HTMLSelectElement>(root, "#student-sort");
   const status = requiredElement<HTMLElement>(root, "#app-status");
   const formMode = requiredElement<HTMLElement>(root, "#form-mode");
-  const submitButton = requiredElement<HTMLButtonElement>(root, "#student-submit");
-  const cancelEditButton = requiredElement<HTMLButtonElement>(root, "#cancel-edit");
-  const resetButton = requiredElement<HTMLButtonElement>(root, "#reset-students");
-  const resetConfirmation = requiredElement<HTMLElement>(root, "#reset-confirmation");
-  const confirmReset = requiredElement<HTMLButtonElement>(root, "#confirm-reset");
+  const submitButton = requiredElement<HTMLButtonElement>(
+    root,
+    "#student-submit",
+  );
+  const cancelEditButton = requiredElement<HTMLButtonElement>(
+    root,
+    "#cancel-edit",
+  );
+  const resetButton = requiredElement<HTMLButtonElement>(
+    root,
+    "#reset-students",
+  );
+  const resetConfirmation = requiredElement<HTMLElement>(
+    root,
+    "#reset-confirmation",
+  );
+  const confirmReset = requiredElement<HTMLButtonElement>(
+    root,
+    "#confirm-reset",
+  );
   const cancelReset = requiredElement<HTMLButtonElement>(root, "#cancel-reset");
   const summaryAverage = requiredElement<HTMLElement>(root, "#summary-average");
   const summaryMinimum = requiredElement<HTMLElement>(root, "#summary-minimum");
@@ -309,17 +324,44 @@ export function mountApp(
   const undoMessage = requiredElement<HTMLElement>(root, "#undo-message");
   const undoAction = requiredElement<HTMLButtonElement>(root, "#undo-action");
   const tutorList = requiredElement<HTMLUListElement>(root, "#tutor-list");
-  const exportBackup = requiredElement<HTMLButtonElement>(root, "#export-backup");
+  const exportBackup = requiredElement<HTMLButtonElement>(
+    root,
+    "#export-backup",
+  );
   const backupFile = requiredElement<HTMLInputElement>(root, "#backup-file");
-  const restoreBackup = requiredElement<HTMLButtonElement>(root, "#restore-backup");
-  const mergeMode = requiredElement<HTMLInputElement>(root, "#backup-mode-merge");
+  const restoreBackup = requiredElement<HTMLButtonElement>(
+    root,
+    "#restore-backup",
+  );
+  const mergeMode = requiredElement<HTMLInputElement>(
+    root,
+    "#backup-mode-merge",
+  );
   const recoveryPanel = requiredElement<HTMLElement>(root, "#storage-recovery");
-  const recoveryMessage = requiredElement<HTMLElement>(root, "#storage-recovery-message");
-  const downloadRecovery = requiredElement<HTMLButtonElement>(root, "#download-recovery");
-  const discardRecovery = requiredElement<HTMLButtonElement>(root, "#discard-recovery");
-  const discardRecoveryConfirmation = requiredElement<HTMLElement>(root, "#discard-recovery-confirmation");
-  const confirmDiscardRecovery = requiredElement<HTMLButtonElement>(root, "#confirm-discard-recovery");
-  const cancelDiscardRecovery = requiredElement<HTMLButtonElement>(root, "#cancel-discard-recovery");
+  const recoveryMessage = requiredElement<HTMLElement>(
+    root,
+    "#storage-recovery-message",
+  );
+  const downloadRecovery = requiredElement<HTMLButtonElement>(
+    root,
+    "#download-recovery",
+  );
+  const discardRecovery = requiredElement<HTMLButtonElement>(
+    root,
+    "#discard-recovery",
+  );
+  const discardRecoveryConfirmation = requiredElement<HTMLElement>(
+    root,
+    "#discard-recovery-confirmation",
+  );
+  const confirmDiscardRecovery = requiredElement<HTMLButtonElement>(
+    root,
+    "#confirm-discard-recovery",
+  );
+  const cancelDiscardRecovery = requiredElement<HTMLButtonElement>(
+    root,
+    "#cancel-discard-recovery",
+  );
 
   function setStatus(
     message: string,
@@ -335,7 +377,10 @@ export function mountApp(
     undoMessage.textContent = "";
   }
 
-  function rememberUndo(previousStudents: readonly Student[], message: string): void {
+  function rememberUndo(
+    previousStudents: readonly Student[],
+    message: string,
+  ): void {
     undoSnapshot = {
       students: [...previousStudents],
       message,
@@ -346,8 +391,14 @@ export function mountApp(
 
   function clearFieldErrors(): void {
     for (const field of Object.keys(fieldSelectors) as StudentField[]) {
-      const input = requiredElement<HTMLInputElement>(form, fieldSelectors[field]);
-      const error = requiredElement<HTMLElement>(form, `#student-${field}-error`);
+      const input = requiredElement<HTMLInputElement>(
+        form,
+        fieldSelectors[field],
+      );
+      const error = requiredElement<HTMLElement>(
+        form,
+        `#student-${field}-error`,
+      );
       input.removeAttribute("aria-invalid");
       error.textContent = "";
     }
@@ -367,9 +418,13 @@ export function mountApp(
 
   function startEditing(student: Student): void {
     editingStudentId = student.id;
-    requiredElement<HTMLInputElement>(form, "#student-name").value = student.name;
-    requiredElement<HTMLInputElement>(form, "#student-surname").value = student.surname;
-    requiredElement<HTMLInputElement>(form, "#student-grade").value = String(student.grade);
+    requiredElement<HTMLInputElement>(form, "#student-name").value =
+      student.name;
+    requiredElement<HTMLInputElement>(form, "#student-surname").value =
+      student.surname;
+    requiredElement<HTMLInputElement>(form, "#student-grade").value = String(
+      student.grade,
+    );
     clearFieldErrors();
     submitButton.textContent = "Guardar cambios";
     cancelEditButton.hidden = false;
@@ -379,7 +434,9 @@ export function mountApp(
 
   function setWorkspaceRecoveryState(): void {
     for (const control of Array.from(
-      form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button"),
+      form.querySelectorAll<HTMLInputElement | HTMLButtonElement>(
+        "input, button",
+      ),
     )) {
       control.disabled = recoveryPending;
     }
@@ -400,9 +457,18 @@ export function mountApp(
 
   function renderFieldErrors(errors: StudentErrors): void {
     clearFieldErrors();
-    for (const [field, message] of Object.entries(errors) as [StudentField, string][]) {
-      const input = requiredElement<HTMLInputElement>(form, fieldSelectors[field]);
-      const error = requiredElement<HTMLElement>(form, `#student-${field}-error`);
+    for (const [field, message] of Object.entries(errors) as [
+      StudentField,
+      string,
+    ][]) {
+      const input = requiredElement<HTMLInputElement>(
+        form,
+        fieldSelectors[field],
+      );
+      const error = requiredElement<HTMLElement>(
+        form,
+        `#student-${field}-error`,
+      );
       input.setAttribute("aria-invalid", "true");
       error.textContent = message;
     }
@@ -417,8 +483,8 @@ export function mountApp(
 
   function renderStudents(): void {
     list.replaceChildren();
-    const visibleStudents = sortStudentsBy(students, sortMode).filter((student) =>
-      matchesStudent(student, searchQuery),
+    const visibleStudents = sortStudentsBy(students, sortMode).filter(
+      (student) => matchesStudent(student, searchQuery),
     );
 
     count.textContent = `${students.length} ${students.length === 1 ? "alumno" : "alumnos"}`;
@@ -485,7 +551,10 @@ export function mountApp(
           `${student.name} ${student.surname} fue eliminado.`,
         );
         renderStudents();
-        setStatus(`${student.name} ${student.surname} fue eliminado.`, "success");
+        setStatus(
+          `${student.name} ${student.surname} fue eliminado.`,
+          "success",
+        );
       });
 
       actions.append(edit, remove);
@@ -526,9 +595,13 @@ export function mountApp(
     if (!validation.valid) {
       renderFieldErrors(validation.errors);
       setStatus("Revisá los campos marcados antes de guardar.", "error");
-      const firstError = Object.keys(validation.errors)[0] as StudentField | undefined;
+      const firstError = Object.keys(validation.errors)[0] as
+        StudentField | undefined;
       if (firstError !== undefined) {
-        requiredElement<HTMLInputElement>(form, fieldSelectors[firstError]).focus();
+        requiredElement<HTMLInputElement>(
+          form,
+          fieldSelectors[firstError],
+        ).focus();
       }
       return;
     }
@@ -536,7 +609,9 @@ export function mountApp(
     clearFieldErrors();
 
     if (editingStudentId !== null) {
-      const original = students.find((student) => student.id === editingStudentId);
+      const original = students.find(
+        (student) => student.id === editingStudentId,
+      );
       if (original === undefined) {
         cancelEditing(true);
         setStatus("El alumno que estabas editando ya no existe.", "error");
@@ -751,7 +826,9 @@ export function mountApp(
 
   if (initialization.storageIssue !== null) {
     recoveryPanel.hidden = false;
-    recoveryMessage.textContent = storageIssueMessage(initialization.storageIssue);
+    recoveryMessage.textContent = storageIssueMessage(
+      initialization.storageIssue,
+    );
   }
 
   setWorkspaceRecoveryState();

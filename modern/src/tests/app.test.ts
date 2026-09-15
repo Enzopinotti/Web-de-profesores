@@ -37,7 +37,9 @@ describe("Modderhouse app", () => {
     fireEvent.input(screen.getByLabelText("Apellido"), {
       target: { value: surname },
     });
-    fireEvent.input(screen.getByLabelText("Nota"), { target: { value: grade } });
+    fireEvent.input(screen.getByLabelText("Nota"), {
+      target: { value: grade },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Agregar alumno" }));
   }
 
@@ -95,7 +97,9 @@ describe("Modderhouse app", () => {
     expect(screen.getByRole("heading", { name: "Ada Byron" })).not.toBeNull();
     const stored = JSON.parse(
       window.localStorage.getItem(STUDENT_STORAGE_KEY) ?? "{}",
-    ) as { students?: Array<{ id?: string; surname?: string; grade?: number }> };
+    ) as {
+      students?: Array<{ id?: string; surname?: string; grade?: number }>;
+    };
     expect(stored.students?.[0]).toMatchObject({
       id: "student-1",
       surname: "Byron",
@@ -122,7 +126,9 @@ describe("Modderhouse app", () => {
     expect(
       screen.getByText("Ya existe otro alumno con ese nombre y apellido."),
     ).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Ada Lovelace" }),
+    ).not.toBeNull();
   });
 
   it("cancels editing without mutating persistence", () => {
@@ -139,7 +145,9 @@ describe("Modderhouse app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancelar edición" }));
 
     expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe(before);
-    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Ada Lovelace" }),
+    ).not.toBeNull();
   });
 
   it("blocks duplicate students after normalization", () => {
@@ -166,9 +174,15 @@ describe("Modderhouse app", () => {
     addStudent("Grace", "Hopper", "6");
     addStudent("Ada", "Lovelace", "10");
 
-    expect(screen.getByText("8", { selector: "#summary-average" })).not.toBeNull();
-    expect(screen.getByText("6", { selector: "#summary-minimum" })).not.toBeNull();
-    expect(screen.getByText("10", { selector: "#summary-maximum" })).not.toBeNull();
+    expect(
+      screen.getByText("8", { selector: "#summary-average" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByText("6", { selector: "#summary-minimum" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByText("10", { selector: "#summary-maximum" }),
+    ).not.toBeNull();
     expect(screen.queryByText(/aprobado|desaprobado/i)).toBeNull();
   });
 
@@ -198,7 +212,9 @@ describe("Modderhouse app", () => {
     expect(screen.queryByRole("heading", { name: "Ada Lovelace" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Deshacer" }));
-    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Ada Lovelace" }),
+    ).not.toBeNull();
   });
 
   it("requires confirmation before clearing and allows the clear to be undone", () => {
@@ -214,7 +230,9 @@ describe("Modderhouse app", () => {
     expect(screen.getByText("Todavía no hay alumnos.")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Deshacer" }));
-    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).not.toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Ada Lovelace" }),
+    ).not.toBeNull();
   });
 
   it("exports a versioned backup through an injectable download boundary", () => {
@@ -248,8 +266,12 @@ describe("Modderhouse app", () => {
     ).not.toBeNull();
     expect(screen.getByLabelText("Nombre")).toBeDisabled();
     expect(screen.getByLabelText("Ordenar")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Exportar backup" })).toBeDisabled();
-    expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe("broken-json");
+    expect(
+      screen.getByRole("button", { name: "Exportar backup" }),
+    ).toBeDisabled();
+    expect(window.localStorage.getItem(STUDENT_STORAGE_KEY)).toBe(
+      "broken-json",
+    );
   });
 
   it("lets the user preserve the unreadable payload before explicitly discarding it", () => {
@@ -284,7 +306,9 @@ describe("Modderhouse app", () => {
       { id: "backup-1", name: "Grace", surname: "Hopper", grade: 9 },
     ]);
     const fakeFile = { text: async () => raw } as File;
-    const input = screen.getByLabelText("Archivo de backup") as HTMLInputElement;
+    const input = screen.getByLabelText(
+      "Archivo de backup",
+    ) as HTMLInputElement;
     Object.defineProperty(input, "files", {
       configurable: true,
       value: [fakeFile],
@@ -298,6 +322,8 @@ describe("Modderhouse app", () => {
       ).not.toBeNull();
     });
     expect(screen.getByLabelText("Nombre")).not.toBeDisabled();
-    expect(screen.queryByText("Hay datos locales que necesitan recuperación.")).toBeNull();
+    expect(
+      screen.queryByText("Hay datos locales que necesitan recuperación."),
+    ).toBeNull();
   });
 });

@@ -18,9 +18,7 @@ type StudentEnvelope = Readonly<{
 }>;
 
 export type StudentStoreIssue =
-  | "corrupt-json"
-  | "unsupported-version"
-  | "invalid-schema";
+  "corrupt-json" | "unsupported-version" | "invalid-schema";
 
 export type StudentStoreInspection =
   | Readonly<{ status: "empty"; students: [] }>

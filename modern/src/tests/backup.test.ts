@@ -85,10 +85,7 @@ describe("student backup", () => {
   });
 
   it("merges new students while skipping identity duplicates", () => {
-    const raw = serializeStudentBackup([
-      { ...ada, id: "other-ada-id" },
-      grace,
-    ]);
+    const raw = serializeStudentBackup([{ ...ada, id: "other-ada-id" }, grace]);
     const result = importStudentBackup(raw, [ada], "merge");
 
     expect(result).toEqual({
