@@ -8,6 +8,7 @@ on:
       - modern/package.json
       - modern/pnpm-workspace.yaml
       - modern/vite.config.ts
+      - modern/src/tests/document-contract.test.ts
       - .github/workflows/bootstrap-modern-once.yml
 
 permissions:
