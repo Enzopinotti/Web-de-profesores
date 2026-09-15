@@ -1,0 +1,412 @@
+name: Maturity production smoke once
+
+on:
+  push:
+    branches:
+      - ops/2026-maturity-smoke-once
+    paths:
+      - ".github/workflows/maturity-production-smoke-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PRODUCTION_URL: https://enzopinotti.github.io/Web-de-profesores/
+
+    steps:
+      - name: Wait for matured public artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ready=false
+          for attempt in $(seq 1 30); do
+            status="$(curl -L -sS -o /tmp/page.html -w '%{http_code}' "$PRODUCTION_URL" || true)"
+            if [ "$status" = "200" ] && grep -Fq '<title>Modderhouse — Workspace docente local</title>' /tmp/page.html; then
+              script_src="$(grep -oE 'src="[^"]+\.js"' /tmp/page.html | head -n 1 | sed -E 's/^src="([^"]+)"$/\1/' || true)"
+              if [ -n "$script_src" ]; then
+                if [[ "$script_src" == /* ]]; then
+                  script_url="https://enzopinotti.github.io${script_src}"
+                else
+                  script_url="${PRODUCTION_URL}${script_src}"
+                fi
+                if curl -fLsS "$script_url" -o /tmp/app.js && grep -Fq 'CONTINUIDAD DE DATOS' /tmp/app.js && grep -Fq 'Ver baseline histórico exacto de 2023' /tmp/app.js; then
+                  ready=true
+                  echo "Matured public artifact detected on attempt $attempt: $script_src"
+                  break
+                fi
+              fi
+            fi
+            echo "Attempt $attempt: waiting for matured production artifact (HTTP $status)."
+            sleep 4
+          done
+
+          test "$ready" = true
+          grep -Fq 'rel="canonical"' /tmp/page.html
+          grep -Fq 'property="og:url"' /tmp/page.html
+          grep -Fq 'https://enzopinotti.github.io/Web-de-profesores/' /tmp/page.html
+          if grep -Fqi 'type="password"' /tmp/page.html; then exit 1; fi
+
+          curl -fLsS "${PRODUCTION_URL}robots.txt" -o /tmp/robots.txt
+          curl -fLsS "${PRODUCTION_URL}sitemap.xml" -o /tmp/sitemap.xml
+          grep -Fq 'Sitemap: https://enzopinotti.github.io/Web-de-profesores/sitemap.xml' /tmp/robots.txt
+          test "$(grep -o '<loc>' /tmp/sitemap.xml | wc -l | tr -d ' ')" = "1"
+          grep -Fq '<loc>https://enzopinotti.github.io/Web-de-profesores/</loc>' /tmp/sitemap.xml
+
+      - name: Launch matured production in headless Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome"
+          "$chrome" --version
+          "$chrome" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --remote-debugging-port=9222 \
+            --remote-allow-origins='*' \
+            --user-data-dir=/tmp/modderhouse-maturity-chrome \
+            "$PRODUCTION_URL" \
+            >/tmp/chrome.log 2>&1 &
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/chrome.log
+          exit 1
+
+      - name: Verify matured product behavior in real Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/maturity-smoke.mjs <<'NODE'
+          import assert from "node:assert/strict";
+
+          const PRODUCTION_URL = "https://enzopinotti.github.io/Web-de-profesores/";
+          const HISTORICAL_SHA = "d6a38f5795569131ff4cd0db63640aff8dc09007";
+          const STORAGE_KEY = "modderhouse.students.v1";
+
+          const targets = await (await fetch("http://127.0.0.1:9222/json/list")).json();
+          const target = targets.find(
+            (candidate) =>
+              candidate.type === "page" && candidate.url.startsWith(PRODUCTION_URL),
+          );
+          assert.ok(target, "production page target was not found");
+
+          const socket = new WebSocket(target.webSocketDebuggerUrl);
+          await new Promise((resolve, reject) => {
+            socket.addEventListener("open", resolve, { once: true });
+            socket.addEventListener("error", reject, { once: true });
+          });
+
+          let nextId = 0;
+          const pending = new Map();
+          socket.addEventListener("message", (event) => {
+            const message = JSON.parse(event.data);
+            if (!message.id) return;
+            const handler = pending.get(message.id);
+            if (!handler) return;
+            pending.delete(message.id);
+            if (message.error) handler.reject(new Error(JSON.stringify(message.error)));
+            else handler.resolve(message.result);
+          });
+
+          function command(method, params = {}) {
+            return new Promise((resolve, reject) => {
+              const id = ++nextId;
+              pending.set(id, { resolve, reject });
+              socket.send(JSON.stringify({ id, method, params }));
+            });
+          }
+
+          async function evaluate(expression) {
+            const response = await command("Runtime.evaluate", {
+              expression,
+              returnByValue: true,
+              awaitPromise: true,
+            });
+            if (response.exceptionDetails) {
+              throw new Error(
+                response.exceptionDetails.exception?.description ||
+                  response.exceptionDetails.text ||
+                  "Chrome evaluation failed",
+              );
+            }
+            return response.result.value;
+          }
+
+          async function waitFor(expression, label, attempts = 80) {
+            for (let attempt = 0; attempt < attempts; attempt += 1) {
+              if (await evaluate(expression)) return;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            throw new Error(`Timed out waiting for ${label}`);
+          }
+
+          async function addStudent(name, surname, grade) {
+            await evaluate(`(() => {
+              const setValue = (selector, value) => {
+                const node = document.querySelector(selector);
+                node.value = value;
+                node.dispatchEvent(new Event('input', { bubbles: true }));
+              };
+              setValue('#student-name', ${JSON.stringify(name)});
+              setValue('#student-surname', ${JSON.stringify(surname)});
+              setValue('#student-grade', ${JSON.stringify(String(grade))});
+              document.querySelector('#student-form').requestSubmit();
+              return true;
+            })()`);
+          }
+
+          async function setViewport(width) {
+            await command("Emulation.setDeviceMetricsOverride", {
+              width,
+              height: 900,
+              deviceScaleFactor: 1,
+              mobile: false,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 150));
+          }
+
+          async function assertNoHorizontalOverflow(width, label = "normal") {
+            await setViewport(width);
+            const layout = await evaluate(`({
+              viewport: window.innerWidth,
+              html: document.documentElement.scrollWidth,
+              body: document.body.scrollWidth,
+            })`);
+            assert.ok(
+              layout.html <= layout.viewport && layout.body <= layout.viewport,
+              `${label} horizontal overflow at ${width}px: viewport=${layout.viewport}, html=${layout.html}, body=${layout.body}`,
+            );
+          }
+
+          await command("Runtime.enable");
+          await waitFor(
+            `document.readyState === 'complete' && Boolean(document.querySelector('#student-form')) && document.body.innerText.includes('Backup y restauración')`,
+            "matured app mount",
+          );
+
+          const initial = await evaluate(`(() => ({
+            title: document.title,
+            passwords: document.querySelectorAll('input[type="password"]').length,
+            baselineHref: document.querySelector('.archive-note a')?.href,
+            backupVisible: document.body.innerText.includes('Backup y restauración'),
+            summaryVisible: Boolean(document.querySelector('.student-summary')),
+            canonical: document.querySelector('link[rel="canonical"]')?.href,
+          }))()`);
+          assert.equal(initial.title, "Modderhouse — Workspace docente local");
+          assert.equal(initial.passwords, 0);
+          assert.equal(initial.canonical, PRODUCTION_URL);
+          assert.equal(initial.backupVisible, true);
+          assert.equal(initial.summaryVisible, true);
+          assert.match(initial.baselineHref, new RegExp(HISTORICAL_SHA));
+
+          await addStudent("Ada", "Lovelace", 10);
+          await waitFor(
+            `Array.from(document.querySelectorAll('.student-card h3')).some((node) => node.textContent === 'Ada Lovelace')`,
+            "Ada creation",
+          );
+          await addStudent("Grace", "Hopper", 6);
+          await waitFor(
+            `document.querySelector('#student-count')?.textContent === '2 alumnos'`,
+            "Grace creation",
+          );
+
+          const initialStudents = await evaluate(
+            `JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).students`,
+          );
+          const adaBefore = initialStudents.find(
+            (student) => student.name === "Ada" && student.surname === "Lovelace",
+          );
+          assert.ok(adaBefore?.id, "Ada stable id missing before edit");
+
+          await evaluate(`(() => {
+            document.querySelector('button[aria-label="Editar a Ada Lovelace"]').click();
+            const surname = document.querySelector('#student-surname');
+            const grade = document.querySelector('#student-grade');
+            surname.value = 'Byron';
+            surname.dispatchEvent(new Event('input', { bubbles: true }));
+            grade.value = '9';
+            grade.dispatchEvent(new Event('input', { bubbles: true }));
+            document.querySelector('#student-form').requestSubmit();
+            return true;
+          })()`);
+          await waitFor(
+            `Array.from(document.querySelectorAll('.student-card h3')).some((node) => node.textContent === 'Ada Byron')`,
+            "stable-id edit",
+          );
+
+          const adaAfter = await evaluate(`(() => {
+            const store = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
+            return store.students.find((student) => student.name === 'Ada' && student.surname === 'Byron');
+          })()`);
+          assert.equal(adaAfter.id, adaBefore.id, "editing changed the stable student id");
+          assert.equal(adaAfter.grade, 9);
+
+          await evaluate(`(() => {
+            document.querySelector('button[aria-label="Editar a Ada Byron"]').click();
+            const name = document.querySelector('#student-name');
+            const surname = document.querySelector('#student-surname');
+            name.value = 'Grace';
+            name.dispatchEvent(new Event('input', { bubbles: true }));
+            surname.value = 'Hopper';
+            surname.dispatchEvent(new Event('input', { bubbles: true }));
+            document.querySelector('#student-form').requestSubmit();
+            return true;
+          })()`);
+          await waitFor(
+            `document.querySelector('#app-status')?.textContent === 'Ya existe otro alumno con ese nombre y apellido.'`,
+            "duplicate edit guard",
+          );
+          assert.equal(
+            await evaluate(
+              `Array.from(document.querySelectorAll('.student-card h3')).some((node) => node.textContent === 'Ada Byron')`,
+            ),
+            true,
+          );
+          await evaluate(`document.querySelector('#cancel-edit').click()`);
+
+          const summary = await evaluate(`({
+            average: document.querySelector('#summary-average')?.textContent,
+            minimum: document.querySelector('#summary-minimum')?.textContent,
+            maximum: document.querySelector('#summary-maximum')?.textContent,
+          })`);
+          assert.deepEqual(summary, { average: "7,5", minimum: "6", maximum: "9" });
+          assert.equal(
+            await evaluate(`/aprobado|desaprobado/i.test(document.body.innerText)`),
+            false,
+          );
+
+          await evaluate(`(() => {
+            const select = document.querySelector('#student-sort');
+            select.value = 'grade-desc';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          })()`);
+          const sorted = await evaluate(
+            `Array.from(document.querySelectorAll('.student-card h3')).map((node) => node.textContent)`,
+          );
+          assert.deepEqual(sorted, ["Ada Byron", "Grace Hopper"]);
+
+          await evaluate(
+            `document.querySelector('button[aria-label="Eliminar a Ada Byron"]').click()`,
+          );
+          await waitFor(
+            `!Array.from(document.querySelectorAll('.student-card h3')).some((node) => node.textContent === 'Ada Byron')`,
+            "delete",
+          );
+          await evaluate(`document.querySelector('#undo-action').click()`);
+          await waitFor(
+            `Array.from(document.querySelectorAll('.student-card h3')).some((node) => node.textContent === 'Ada Byron')`,
+            "delete undo",
+          );
+
+          await evaluate(`document.querySelector('#reset-students').click()`);
+          await waitFor(
+            `!document.querySelector('#reset-confirmation').hidden`,
+            "clear confirmation",
+          );
+          await evaluate(`document.querySelector('#confirm-reset').click()`);
+          await waitFor(
+            `document.querySelector('#student-count')?.textContent === '0 alumnos'`,
+            "clear",
+          );
+          await evaluate(`document.querySelector('#undo-action').click()`);
+          await waitFor(
+            `document.querySelector('#student-count')?.textContent === '2 alumnos'`,
+            "clear undo",
+          );
+
+          await evaluate(
+            `localStorage.setItem('Usuarios', JSON.stringify([{ DNI: 'legacy', contraseña: 'legacy' }]))`,
+          );
+          await evaluate(`location.reload()`);
+          await waitFor(
+            `document.readyState === 'complete' && Boolean(document.querySelector('#student-form')) && document.querySelector('#student-count')?.textContent === '2 alumnos'`,
+            "reload after legacy credential seed",
+          );
+          assert.equal(await evaluate(`localStorage.getItem('Usuarios')`), null);
+          assert.equal(
+            await evaluate(`document.querySelectorAll('input[type="password"]').length`),
+            0,
+          );
+
+          await evaluate(
+            `localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, 'broken-json')`,
+          );
+          await evaluate(`location.reload()`);
+          await waitFor(
+            `document.readyState === 'complete' && !document.querySelector('#storage-recovery').hidden`,
+            "explicit storage recovery state",
+          );
+          assert.equal(
+            await evaluate(`document.querySelector('#student-name').disabled`),
+            true,
+          );
+          assert.equal(
+            await evaluate(`document.querySelector('#student-sort').disabled`),
+            true,
+          );
+          assert.equal(
+            await evaluate(`document.querySelector('#export-backup').disabled`),
+            true,
+          );
+          assert.equal(await evaluate(`localStorage.getItem(${JSON.stringify(STORAGE_KEY)})`), "broken-json");
+          await assertNoHorizontalOverflow(360, "recovery");
+
+          await evaluate(`(() => {
+            const payload = {
+              format: 'modderhouse.student-backup',
+              version: 1,
+              exportedAt: '2026-09-15T17:00:00.000Z',
+              students: [
+                { id: 'recovered-1', name: 'Katherine', surname: 'Johnson', grade: 10 }
+              ]
+            };
+            const file = new File([JSON.stringify(payload)], 'backup.json', { type: 'application/json' });
+            const transfer = new DataTransfer();
+            transfer.items.add(file);
+            const input = document.querySelector('#backup-file');
+            input.files = transfer.files;
+            document.querySelector('#restore-backup').click();
+            return true;
+          })()`);
+          await waitFor(
+            `Array.from(document.querySelectorAll('.student-card h3')).some((node) => node.textContent === 'Katherine Johnson') && document.querySelector('#storage-recovery').hidden`,
+            "backup restore out of recovery",
+          );
+          assert.equal(
+            await evaluate(`document.querySelector('#student-name').disabled`),
+            false,
+          );
+
+          const resources = await evaluate(
+            `performance.getEntriesByType('resource').map((entry) => entry.name)`,
+          );
+          assert.equal(
+            resources.some((url) => /tutorEnzo\.jpg|muro-hormigon-gris\.jpg/i.test(url)),
+            false,
+            "heavy historical media was requested by current production",
+          );
+
+          for (const width of [360, 768, 1440]) {
+            await assertNoHorizontalOverflow(width);
+          }
+
+          console.log(
+            "Maturity production smoke passed: history link, no auth pretense, CRUD/edit identity, duplicate guard, summaries, sorting, undo, legacy credential purge, recovery, backup restore, media and 360/768/1440 responsive contracts are valid.",
+          );
+          socket.close();
+          NODE
+
+          node /tmp/maturity-smoke.mjs
